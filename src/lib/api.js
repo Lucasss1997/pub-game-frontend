@@ -1,42 +1,40 @@
-import { authHeader, clearToken } from './auth';
+// Central API helper – ALWAYS sends the JWT if present
+const BASE = (process.env.REACT_APP_API_BASE || '').replace(/\/$/, '');
 
-const API_BASE = process.env.REACT_APP_API_BASE || ''; 
-// e.g. set REACT_APP_API_BASE="https://pub-game-backend.onrender.com"
+async function apiFetch(path, opts = {}) {
+  const token = localStorage.getItem('token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(opts.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 
-async function request(path, { method = 'GET', headers = {}, body } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeader(),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: 'omit', // using header tokens
+  const res = await fetch(`${BASE}${path}`, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    credentials: 'include',
   });
 
-  // Try to parse JSON safely
   let data = null;
-  const text = await res.text();
-  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-
-  if (res.status === 401) {
-    clearToken();
-    // soft redirect for SPAs
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
-    throw new Error(data?.error || 'Unauthorized');
-  }
+  try { data = await res.json(); } catch (_) {}
 
   if (!res.ok) {
-    throw new Error(data?.error || `HTTP ${res.status}`);
+    const msg = data?.error || `Request failed (${res.status})`;
+    throw new Error(msg);
   }
-
-  return data;
+  return data ?? {};
 }
 
 export const api = {
-  get: (p) => request(p),
-  post: (p, body) => request(p, { method: 'POST', body }),
+  get: (p) => apiFetch(p),
+  post: (p, body) => apiFetch(p, { method: 'POST', body }),
+  put: (p, body) => apiFetch(p, { method: 'PUT', body }),
+  del: (p) => apiFetch(p, { method: 'DELETE' }),
 };
+
+// Optional helpers
+export function logoutAndRedirect() {
+  localStorage.removeItem('token');
+  window.location.replace('/login');
+}

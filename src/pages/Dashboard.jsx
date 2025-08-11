@@ -70,4 +70,4 @@ const styles = {
   gameCard: { padding: 15, borderRadius: 8, background: 'rgba(255,255,255,0.05)', textDecoration: 'none', color: 'inherit', display:'flex', flexDirection:'column', gap:8, alignItems:'center' },
   playLink: { textDecoration: 'none' },
   playBtn: { marginTop: 10, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#22c55e', color: '#0f172a', fontWeight: 700, cursor: 'pointer' }
-};
+}

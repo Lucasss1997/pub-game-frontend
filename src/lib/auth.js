@@ -1,34 +1,15 @@
-// src/lib/auth.js
+// tiny auth helper using localStorage
+const KEY = 'pg_jwt';
 
-// Save token to localStorage
-export function setToken(token) {
-  try {
-    localStorage.setItem('token', token);
-  } catch (err) {
-    console.error('Error saving token to localStorage:', err);
-  }
+export function setToken(t) {
+  localStorage.setItem(KEY, t);
 }
-
-// Retrieve token from localStorage
 export function getToken() {
-  try {
-    return localStorage.getItem('token');
-  } catch (err) {
-    console.error('Error retrieving token from localStorage:', err);
-    return null;
-  }
+  return localStorage.getItem(KEY) || '';
 }
-
-// Remove token from localStorage (logout)
 export function clearToken() {
-  try {
-    localStorage.removeItem('token');
-  } catch (err) {
-    console.error('Error removing token from localStorage:', err);
-  }
+  localStorage.removeItem(KEY);
 }
-
-// Check if a token exists (user is logged in)
 export function isLoggedIn() {
   return !!getToken();
 }

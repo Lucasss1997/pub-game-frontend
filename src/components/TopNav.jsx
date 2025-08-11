@@ -1,4 +1,4 @@
-// Drop this in: src/components/TopNav.jsx
+// src/components/TopNav.jsx
 // Reusable top navigation matching your dark UI.
 // Usage:
 //   <TopNav title="Dashboard" onLogout={() => { clearToken(); nav('/login', { replace: true }); }} />

@@ -1,38 +1,58 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
-import Login from './pages/Login';
+// Layout / pages
+import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
-import CrackTheSafe from './pages/CrackTheSafe';
-import WhatsInTheBox from './pages/WhatsInTheBox';
-import PrivateRoute from './components/PrivateRoute';
-import { isLoggedIn } from './lib/auth';
+import Billing from './pages/Billing';
+import Login from './pages/Login';
 
-// Public play pages (no login)
+// Public game pages
 import CrackSafePublic from './pages/play/CrackSafePublic';
 import WhatsInTheBoxPublic from './pages/play/WhatsInTheBoxPublic';
 
-export default function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={isLoggedIn() ? <Navigate to="/dashboard" replace /> : <Login />} />
+// Optional: Protected route wrapper if you have authentication
+import PrivateRoute from './components/PrivateRoute';
 
-        {/* Public game URLs for players (QR codes will point here) */}
+// Common layout (navbar/footer)
+import Navbar from './components/Navbar';
+
+function App() {
+  return (
+    <Router>
+      <Navbar />
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+
+        {/* Public game routes (no login required) */}
         <Route path="/play/crack-the-safe" element={<CrackSafePublic />} />
         <Route path="/play/whats-in-the-box" element={<WhatsInTheBoxPublic />} />
 
-        {/* Manager / protected area */}
-        <Route element={<PrivateRoute />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/crack-the-safe" element={<CrackTheSafe />} />
-          <Route path="/whats-in-the-box" element={<WhatsInTheBox />} />
-        </Route>
+        {/* Auth-protected routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <PrivateRoute>
+              <Dashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/billing"
+          element={
+            <PrivateRoute>
+              <Billing />
+            </PrivateRoute>
+          }
+        />
 
-        {/* Default + catch-all */}
-        <Route path="/" element={<Navigate to={isLoggedIn() ? '/dashboard' : '/login'} replace />} />
-        <Route path="*" element={<Navigate to={isLoggedIn() ? '/dashboard' : '/login'} replace />} />
+        {/* Fallback */}
+        <Route path="*" element={<div>404 - Page Not Found</div>} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
+
+export default App;

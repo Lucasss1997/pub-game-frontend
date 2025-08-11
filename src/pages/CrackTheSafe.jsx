@@ -56,7 +56,7 @@ export default function CrackTheSafe() {
         <div style={s.headRow}>
           <h1 style={{margin:0}}>Crack the Safe</h1>
           <div style={{display:'flex', gap:8}}>
-            <button style={s.btnGhost} onClick={() => alert('Rules: 3-digit code, 3 tries. We say Higher/Lower. Win rotates the code for the next round.')}>How it works</button>
+            <button style={s.btnGhost} onClick={() => alert('Rules: 3-digit code, 3 tries. We hint Higher/Lower. Win rotates the code for the next round.')}>How it works</button>
             <button style={s.btnGhost} onClick={() => nav('/dashboard')}>Back to dashboard</button>
           </div>
         </div>

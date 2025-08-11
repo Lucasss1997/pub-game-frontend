@@ -1,55 +1,33 @@
-// src/lib/api.js
-// Central API helper — always sends JWT if present, no cookies.
-// Also falls back to your live backend if the env var is missing.
+// fetch wrapper that points to your backend + adds Bearer token if available
+import { getToken } from './auth';
 
-const DEFAULT_BASE = 'https://pub-game-backend.onrender.com';
-const ENV_BASE = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/$/, '');
-const BASE = ENV_BASE || DEFAULT_BASE;
+const BASE =
+  process.env.REACT_APP_API_BASE ||
+  (typeof window !== 'undefined' ? window.__API_BASE__ : '') ||
+  '';
 
-async function apiFetch(path, opts = {}) {
-  const token = localStorage.getItem('token');
-
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(opts.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  let res;
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      method: opts.method || 'GET',
-      headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-      // IMPORTANT: omit cookies to keep CORS simple (we use Bearer tokens)
-      credentials: 'omit',
-    });
-  } catch {
-    throw new Error(`Network error contacting API at ${BASE}${path}`);
-  }
-
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    // non-JSON response; leave data as null
-  }
-
+async function req(method, path, body) {
+  const res = await fetch(BASE + path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(getToken() ? { Authorization: 'Bearer ' + getToken() } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
   if (!res.ok) {
-    const msg = (data && (data.error || data.message)) || `Request failed (${res.status})`;
+    const msg = data?.error || data?.message || `HTTP ${res.status}`;
     throw new Error(msg);
   }
-  return data ?? {};
+  return data;
 }
 
 export const api = {
-  get: (p) => apiFetch(p),
-  post: (p, body) => apiFetch(p, { method: 'POST', body }),
-  put: (p, body) => apiFetch(p, { method: 'PUT', body }),
-  del: (p) => apiFetch(p, { method: 'DELETE' }),
+  get: (p) => req('GET', p),
+  post: (p, b) => req('POST', p, b),
+  put: (p, b) => req('PUT', p, b),
+  del: (p) => req('DELETE', p),
 };
-
-export function logoutAndRedirect() {
-  try { localStorage.removeItem('token'); } catch {}
-  window.location.replace('/login');
-}

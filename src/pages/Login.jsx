@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import TopNav from '../components/TopNav';
 import { api } from '../lib/api';
 import { setToken } from '../lib/auth';
-import TopNav from '../components/TopNav';
 
-// Drop this in as src/pages/Login.jsx
+const API_BASE = (process.env.REACT_APP_API_BASE || 'https://pub-game-backend.onrender.com').replace(/\/$/, '');
+
 export default function Login() {
   const nav = useNavigate();
   const [email, setEmail] = useState('');
@@ -12,22 +13,57 @@ export default function Login() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [status, setStatus] = useState('');
+  const [health, setHealth] = useState('');
+  const [serverData, setServerData] = useState(null);
+
+  async function checkHealth() {
+    setHealth('Checking…');
+    try {
+      const res = await fetch(`${API_BASE}/healthz`, { method: 'GET' });
+      const data = await res.json();
+      setHealth(data?.ok ? 'OK' : `Bad (${res.status})`);
+    } catch (e) {
+      setHealth('Network error');
+    }
+  }
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr('');
+    setStatus('');
+    setServerData(null);
+
     if (!email || !password) {
       setErr('Please enter your email and password.');
       return;
     }
+
     try {
       setLoading(true);
-      const data = await api.post('/api/login', { email, password });
-      if (!data?.token) throw new Error('No token returned');
-      setToken(data.token);
+      setStatus(`Contacting ${API_BASE} …`);
+
+      // 1) Login
+      const loginRes = await api.post('/api/login', { email, password });
+      setServerData(loginRes);
+      if (!loginRes?.token) {
+        setErr('Login succeeded but no token was returned.');
+        setStatus('Unexpected response from server.');
+        return;
+      }
+
+      // 2) Save token
+      setToken(loginRes.token);
+      setStatus('Token saved. Verifying session…');
+
+      // 3) Verify
+      await api.get('/api/me');
+
+      setStatus('Success! Redirecting…');
       nav('/dashboard', { replace: true });
-    } catch (e) {
-      setErr(e.message || 'Login failed');
+    } catch (e2) {
+      setErr(e2.message || 'Login failed');
+      setStatus('');
     } finally {
       setLoading(false);
     }
@@ -37,7 +73,6 @@ export default function Login() {
 
   return (
     <div style={s.shell}>
-      {/* Top navigation (shared) */}
       <TopNav title="Sign in" hideLogout />
 
       <main style={s.main}>
@@ -45,6 +80,15 @@ export default function Login() {
           <h1 style={s.title}>Welcome back</h1>
           <p style={s.subtext}>Sign in to manage your pub games.</p>
 
+          {/* Env / debug */}
+          <div style={s.envRow}>
+            <span style={s.envLabel}>API:</span>
+            <code style={s.envCode}>{API_BASE}</code>
+            <button type="button" onClick={checkHealth} style={s.pingBtn}>Ping</button>
+            <span style={s.pingStatus}>{health}</span>
+          </div>
+
+          {status && <div style={s.alertInfo}>{status}</div>}
           {err && <div style={s.alertError}>{err}</div>}
 
           <label style={s.field}>
@@ -93,6 +137,13 @@ export default function Login() {
               Ask your admin
             </Link>
           </div>
+
+          {serverData && !serverData.token && (
+            <details style={s.debugWrap}>
+              <summary style={s.debugSummary}>Debug: server response (no token returned)</summary>
+              <pre style={s.debugPre}>{JSON.stringify(serverData, null, 2)}</pre>
+            </details>
+          )}
         </form>
       </main>
 
@@ -142,6 +193,12 @@ function getStyles() {
     title: { margin: 0, fontSize: 24, fontWeight: 800, color: '#fff' },
     subtext: { margin: 0, color: '#94a3b8' },
 
+    envRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8' },
+    envLabel: { opacity: 0.9 },
+    envCode: { background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 6 },
+    pingBtn: { padding: '4px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: '#e5e7eb', cursor: 'pointer' },
+    pingStatus: { minWidth: 60 },
+
     field: { display: 'grid', gap: 6 },
     label: { fontSize: 13, color: '#94a3b8' },
     input: {
@@ -186,6 +243,25 @@ function getStyles() {
       color: '#fecaca',
       padding: 10,
       borderRadius: 10,
+    },
+    alertInfo: {
+      background: 'rgba(59,130,246,0.12)',
+      border: '1px solid rgba(59,130,246,0.35)',
+      color: '#bfdbfe',
+      padding: 10,
+      borderRadius: 10,
+    },
+
+    debugWrap: { marginTop: 10 },
+    debugSummary: { cursor: 'pointer' },
+    debugPre: {
+      marginTop: 6,
+      maxHeight: 220,
+      overflow: 'auto',
+      background: 'rgba(0,0,0,0.35)',
+      borderRadius: 8,
+      padding: 10,
+      border: '1px solid rgba(255,255,255,0.12)',
     },
 
     footer: {

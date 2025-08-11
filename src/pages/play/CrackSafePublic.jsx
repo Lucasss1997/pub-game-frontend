@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../../lib/api';
 
-// Public page: anyone can guess the 3-digit code (no login required)
+// Public page: anyone can guess the 3-digit code (no login)
 export default function CrackSafePublic() {
   const [guess, setGuess] = useState('');
   const [status, setStatus] = useState('');
@@ -23,7 +23,6 @@ export default function CrackSafePublic() {
     }
   }
 
-  const s = styles;
   return (
     <div style={s.wrap}>
       <main style={s.main}>
@@ -49,13 +48,11 @@ export default function CrackSafePublic() {
   );
 }
 
-const styles = {
-  wrap: { minHeight: '100vh', background: '#0f172a', color: '#fff', display: 'grid', placeItems: 'center' },
-  main: { padding: 20, maxWidth: 480, width: '100%' },
-  card: { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: 16, display: 'grid', gap: 10 },
-  input: { padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(15,23,42,0.8)', color: '#fff', width: 140 },
-  btn: { padding: '10px 14px', borderRadius: 10, border: 0, background: '#22c55e', color: '#0f172a', fontWeight: 800, width: 140, cursor: 'pointer' },
-  info: { marginTop: 6, color: '#bfdbfe' },
-  err: { marginTop: 6, color: '#fecaca' },
-  small: { color: '#94a3b8', fontSize: 12, textAlign: 'center', marginTop: 12 },
+const s = {
+  wrap:{minHeight:'100vh',background:'#0f172a',color:'#fff',display:'grid',placeItems:'center'},
+  main:{padding:20,maxWidth:480,width:'100%'},
+  card:{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:12,padding:16,display:'grid',gap:10},
+  input:{padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.18)',background:'rgba(15,23,42,0.8)',color:'#fff',width:140},
+  btn:{padding:'10px 14px',borderRadius:10,border:0,background:'#22c55e',color:'#0f172a',fontWeight:800,width:140,cursor:'pointer'},
+  info:{marginTop:6,color:'#bfdbfe'}, err:{marginTop:6,color:'#fecaca'}, small:{color:'#94a3b8',fontSize:12,textAlign:'center',marginTop:12}
 };

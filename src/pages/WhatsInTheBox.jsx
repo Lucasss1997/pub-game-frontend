@@ -50,7 +50,7 @@ export default function WhatsInTheBox() {
         <div style={s.headRow}>
           <h1 style={{margin:0}}>What’s in the Box</h1>
           <div style={{display:'flex', gap:8}}>
-            <button style={s.btnGhost} onClick={() => alert('Rules: 1 prize hidden among 20 boxes. Win rotates to a new box for the next round.')}>How it works</button>
+            <button style={s.btnGhost} onClick={() => alert('Rules: 1 prize among 20 boxes. Win rotates to a new box for the next round.')}>How it works</button>
             <button style={s.btnGhost} onClick={() => nav('/dashboard')}>Back to dashboard</button>
           </div>
         </div>

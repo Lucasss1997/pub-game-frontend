@@ -1,4 +1,5 @@
 import React from 'react';
+import TopNav from './TopNav';
 
 export default function ThemeShell({ children }) {
   const s = {
@@ -14,6 +15,7 @@ export default function ThemeShell({ children }) {
   };
   return (
     <div style={s.shell}>
+      <TopNav />
       <main style={s.main}>{children}</main>
     </div>
   );

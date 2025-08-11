@@ -30,7 +30,7 @@ export default function Dashboard() {
             <div style={styles.gameCard}>
               <h3>Crack the Safe</h3>
               <p>Guess the 3-digit code to win!</p>
-              <QRCode value={`${origin}/crack-the-safe`} size={80} />
+              <QRCode value={`${origin}/crack-the-safe`} size={96} />
               <Link to="/crack-the-safe" style={styles.playLink}>
                 <button style={styles.playBtn}>Play</button>
               </Link>
@@ -39,7 +39,7 @@ export default function Dashboard() {
             <div style={styles.gameCard}>
               <h3>What’s in the Box</h3>
               <p>Pick the winning box!</p>
-              <QRCode value={`${origin}/whats-in-the-box`} size={80} />
+              <QRCode value={`${origin}/whats-in-the-box`} size={96} />
               <Link to="/whats-in-the-box" style={styles.playLink}>
                 <button style={styles.playBtn}>Play</button>
               </Link>
@@ -67,7 +67,7 @@ const styles = {
   statusDot: { width: 10, height: 10, borderRadius: '50%', display: 'inline-block' },
   expiry: { marginLeft: 'auto', fontSize: 12, color: '#94a3b8' },
   gamesGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 },
-  gameCard: { padding: 15, borderRadius: 8, background: 'rgba(255,255,255,0.05)', textDecoration: 'none', color: 'inherit', display:'flex', flexDirection:'column', gap:8, alignItems:'center' },
+  gameCard: { padding: 15, borderRadius: 8, background: 'rgba(255,255,255,0.05)', textDecoration: 'none', color: 'inherit', display:'flex', flexDirection:'column', gap:10, alignItems:'center' },
   playLink: { textDecoration: 'none' },
-  playBtn: { marginTop: 10, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#22c55e', color: '#0f172a', fontWeight: 700, cursor: 'pointer' }
-}
+  playBtn: { marginTop: 6, padding: '8px 12px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#0f172a', fontWeight: 700, cursor: 'pointer' }
+};

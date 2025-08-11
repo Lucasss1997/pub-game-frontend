@@ -1,84 +1,116 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import TopNav from '../components/TopNav';
+const express = require('express');
+const cors = require('cors');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
+require('dotenv').config();
 
-export default function Billing() {
-  const nav = useNavigate();
-  const [loading, setLoading] = useState(false);
+const app = express();
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
 
-  const s = styles();
+const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET;
 
-  const onBack = () => {
-    nav('/dashboard');
-  };
+// Database connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
-  const onRenew = () => {
-    setLoading(true);
-    // Placeholder for future Stripe integration
-    setTimeout(() => {
-      alert('Subscription renewed successfully!');
-      nav('/dashboard');
-    }, 1500);
-  };
+// Health and root endpoints
+app.get('/', (req, res) => {
+  res.json({ ok: true, service: 'pub-game-backend', health: '/healthz' });
+});
 
-  return (
-    <div style={s.appShell}>
-      <TopNav title="Billing" hideLogout={false} rightSlot={<button style={s.button} onClick={onBack}>Back</button>} />
-      <main style={s.main}>
-        <h1 style={s.title}>Subscription Billing</h1>
-        <p style={s.text}>Your subscription is about to expire or has expired. Renew now to continue accessing all features.</p>
-        <div style={s.actions}>
-          <button style={{ ...s.button, ...s.buttonPrimary }} onClick={onRenew} disabled={loading}>
-            {loading ? 'Processing…' : 'Renew Now'}
-          </button>
-        </div>
-      </main>
-    </div>
-  );
+app.get('/healthz', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT NOW() as now');
+    res.json({ ok: true, now: rows[0].now });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Missing or invalid token' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 }
 
-function styles() {
-  return {
-    appShell: {
-      minHeight: '100vh',
-      background: 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)',
-      color: '#e5e7eb',
-      fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-    },
-    main: {
-      padding: 20,
-      maxWidth: 600,
-      margin: '0 auto',
-      textAlign: 'center',
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: 700,
-      marginBottom: 16,
-    },
-    text: {
-      fontSize: 16,
-      color: '#94a3b8',
-      marginBottom: 24,
-    },
-    actions: {
-      display: 'flex',
-      justifyContent: 'center',
-      gap: 10,
-    },
-    button: {
-      background: 'rgba(255,255,255,0.08)',
-      color: '#e5e7eb',
-      border: '1px solid rgba(255,255,255,0.12)',
-      padding: '8px 16px',
-      borderRadius: 10,
-      cursor: 'pointer',
-    },
-    buttonPrimary: {
-      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-      border: 'none',
-      color: '#0b1220',
-      fontWeight: 700,
-    },
-  };
-}
+// Register
+app.post('/api/register', async (req, res) => {
+  const { email, password, pubName } = req.body || {};
+  if (!email || !password || !pubName) {
+    return res.status(400).json({ error: 'Missing email, password, or pub name' });
+  }
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      'INSERT INTO users (email, password_hash, pub_name) VALUES ($1, $2, $3) RETURNING id',
+      [email, hashedPassword, pubName]
+    );
+    res.status(201).json({ userId: result.rows[0].id });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Login
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Missing email or password' });
+  }
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email]);
+    const user = result.rows[0];
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const token = jwt.sign(
+      { userId: user.id, pubName: user.pub_name || null },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get current user info
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({ userId: req.user.userId, pubName: req.user.pubName || null });
+});
+
+// Dashboard data
+app.get('/api/dashboard', requireAuth, async (req, res) => {
+  try {
+    const { rows: userRows } = await pool.query('SELECT pub_id FROM users WHERE id = $1 LIMIT 1', [req.user.userId]);
+    if (!userRows.length || !userRows[0].pub_id) {
+      return res.json({ pubs: [] });
+    }
+    const pubId = userRows[0].pub_id;
+    const { rows: pubs } = await pool.query('SELECT * FROM pubs WHERE id = $1', [pubId]);
+    res.json({ pubs });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// 404 fallback
+app.use((req, res) => res.status(404).json({ error: 'Not found' }));
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

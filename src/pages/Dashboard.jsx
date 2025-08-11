@@ -1,173 +1,106 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+/* eslint-disable react-hooks/exhaustive-deps */
+import React, { useEffect, useState, useCallback } from 'react';
 import TopNav from '../components/TopNav';
 import { api } from '../lib/api';
-import { clearToken } from '../lib/auth';
+import { useNavigate } from 'react-router-dom';
 
-// Drop-in replacement for src/pages/Dashboard.jsx
-// Adds:
-//  • Status legend (🟢 Active / 🟠 Expiring ≤7d / 🔴 Expired)
-//  • "Renew now" button when expiring soon or expired (navigates to /billing)
 export default function Dashboard() {
   const nav = useNavigate();
-  const [data, setData] = useState(null);
-  const [err, setErr] = useState('');
+  const [pubs, setPubs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchData = async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
-      setErr('');
-      setLoading(true);
+      setError('');
       const d = await api.get('/api/dashboard');
-      setData(d);
+      setPubs(Array.isArray(d?.pubs) ? d.pubs : []);
     } catch (e) {
-      setErr(e.message || 'Failed to load dashboard');
+      setError(e?.message || 'Failed to load dashboard');
+      // if unauthorized, send to login
+      if (String(e?.message || '').toLowerCase().includes('401')) {
+        nav('/login');
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    fetchDashboard();
+  }, [fetchDashboard]);
 
   const onRefresh = async () => {
     try {
       setRefreshing(true);
-      const d = await api.get('/api/dashboard');
-      setData(d);
-    } catch (e) {
-      setErr(e.message || 'Failed to refresh');
+      await fetchDashboard();
     } finally {
       setRefreshing(false);
     }
   };
 
-  const onLogout = () => {
-    clearToken();
-    nav('/login', { replace: true });
-  };
-
   const s = styles();
-  const pubs = data?.pubs || [];
-
-  // Use first pub in header (adjust if multiple)
   const first = pubs[0] || {};
   const expiry = getExpiry(first);
-  const headerStatus = computeStatus(!!first.active && !isExpired(expiry), expiry);
 
   return (
-    <div style={s.appShell}>
-      <TopNav
-        title={first?.name || 'Dashboard'}
-        active={headerStatus.color === COLORS.green}
-        expiryDate={expiry}
-        onLogout={onLogout}
-        rightSlot={(
-          <button onClick={onRefresh} style={s.refreshBtn} disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-        )}
-      />
+    <div style={s.app}>
+      <TopNav />
 
       <main style={s.main}>
-        {err && <div style={s.alertError}>{err}</div>}
-
-        {/* Legend */}
-        <div style={s.legendWrap}>
-          <LegendItem color={COLORS.green} label="Active" />
-          <LegendItem color={COLORS.amber} label="Expiring ≤ 7 days" />
-          <LegendItem color={COLORS.red} label="Expired" />
+        <div style={s.headerRow}>
+          <h1 style={s.h1}>Dashboard</h1>
+          <button style={s.refreshBtn} onClick={onRefresh} disabled={refreshing}>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
 
-        {loading && (
+        {error && <div style={s.alertError}>{error}</div>}
+
+        {loading ? (
           <div style={s.grid}>
-            {Array.from({ length: 1 }).map((_, i) => (
-              <div key={i} style={s.cardSkeleton}>
-                <div style={s.skelTitle} />
-                <div style={s.skelLine} />
-                <div style={s.skelLine} />
-                <div style={s.skelBadgeRow}>
-                  <div style={s.skelBadge} />
-                  <div style={s.skelBadge} />
-                </div>
-              </div>
-            ))}
+            <CardSkeleton />
           </div>
-        )}
-
-        {!loading && pubs.length === 0 && (
-          <div style={s.empty}>
-            <div style={s.emptyIcon}>📭</div>
-            <h2 style={s.emptyTitle}>No pub linked</h2>
-            <p style={s.emptyText}>Your account doesn’t have a pub associated yet.</p>
-          </div>
-        )}
-
-        {!loading && pubs.length > 0 && (
+        ) : pubs.length === 0 ? (
+          <div style={s.empty}>No pub linked to this account yet.</div>
+        ) : (
           <div style={s.grid}>
             {pubs.map((p) => {
               const exp = getExpiry(p);
               const status = computeStatus(!!p.active && !isExpired(exp), exp);
-              const showRenew = status.color === COLORS.amber || status.color === COLORS.red;
-
               return (
                 <article key={p.id} style={s.card}>
-                  {/* Header with name + tiny status dot */}
                   <div style={s.cardHeader}>
-                    <div style={s.emojiBadge}>🏷️</div>
-                    <h3 style={s.cardTitle}>
+                    <div style={s.emoji}>🏷️</div>
+                    <h3 style={s.title}>
                       {p.name}
-                      <span title={status.label} style={{ ...s.statusDot, background: status.color }} />
+                      <span title={status.label} style={{ ...s.dot, background: status.color }} />
                     </h3>
                   </div>
-
-                  {/* Body */}
-                  <div style={s.cardBody}>
+                  <div style={s.body}>
                     {p.city && (
-                      <div style={s.kvRow}>
-                        <span style={s.k}>City</span>
-                        <span style={s.v}>{p.city}</span>
-                      </div>
+                      <Row k="City" v={p.city} />
                     )}
                     {p.address && (
-                      <div style={s.kvRow}>
-                        <span style={s.k}>Address</span>
-                        <span style={s.v}>{p.address}</span>
-                      </div>
+                      <Row k="Address" v={p.address} />
                     )}
-
-                    {/* Subscription */}
                     {exp && (
-                      <div style={s.kvRow}>
-                        <span style={s.k}>Subscription</span>
-                        <span style={s.v}>
-                          Expires {formatDate(exp)}
-                          {status.color === COLORS.red && <span style={s.expiredBadge}>Expired</span>}
-                          {status.color === COLORS.amber && <span style={s.soonBadge}>Renew soon</span>}
-                        </span>
-                      </div>
+                      <Row
+                        k="Subscription"
+                        v={
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            Expires {formatDate(exp)}
+                            {isExpired(exp) && <Badge tone="red">Expired</Badge>}
+                            {!isExpired(exp) && isExpiringSoon(exp) && <Badge tone="amber">Renew soon</Badge>}
+                          </span>
+                        }
+                      />
                     )}
-
-                    <div style={s.kvRow}>
-                      <span style={s.k}>ID</span>
-                      <span style={s.code}>{p.id}</span>
-                    </div>
+                    <Row k="ID" v={<code style={s.code}>{p.id}</code>} />
                   </div>
-
-                  <div style={s.cardFooter}>
-                    {showRenew && (
-                      <button
-                        onClick={() => nav('/billing')}
-                        style={{ ...s.button, ...s.buttonPrimary }}
-                        title={status.color === COLORS.red ? 'Renew your subscription to reactivate' : 'Renew early to avoid interruption'}
-                      >
-                        Renew now
-                      </button>
-                    )}
-                    <button style={{ ...s.button, ...s.buttonGhost }}>Edit Details</button>
+                  <div style={s.footer}>
+                    <button style={s.btnPrimary} onClick={() => nav('/billing')}>Manage / Renew</button>
                   </div>
                 </article>
               );
@@ -176,146 +109,113 @@ export default function Dashboard() {
         )}
       </main>
 
-      <footer style={s.footer}>
-        <span>© {new Date().getFullYear()} Pub Game</span>
-      </footer>
+      <footer style={s.footer}>© {new Date().getFullYear()} Pub Game</footer>
     </div>
   );
 }
 
-function LegendItem({ color, label }) {
+function Row({ k, v }) {
+  const s = styles();
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ width: 10, height: 10, borderRadius: 999, background: color, border: '1px solid rgba(255,255,255,0.35)' }} />
-      <span style={{ color: '#cbd5e1', fontSize: 12 }}>{label}</span>
+    <div style={s.row}>
+      <span style={s.k}>{k}</span>
+      <span style={s.v}>{v}</span>
     </div>
   );
 }
 
-function getExpiry(p) {
+function Badge({ tone = 'amber', children }) {
+  const colors = {
+    red: { bg: 'rgba(239,68,68,0.18)', br: '1px solid rgba(239,68,68,0.35)', fg: '#fecaca' },
+    amber: { bg: 'rgba(245,158,11,0.18)', br: '1px solid rgba(245,158,11,0.35)', fg: '#fde68a' },
+    green: { bg: 'rgba(34,197,94,0.18)', br: '1px solid rgba(34,197,94,0.35)', fg: '#bbf7d0' },
+  }[tone];
+  return (
+    <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: colors.bg, border: colors.br, color: colors.fg }}>
+      {children}
+    </span>
+  );
+}
+
+function CardSkeleton() {
+  const s = styles();
+  return (
+    <div style={s.card}> 
+      <div style={s.cardHeader}>
+        <div style={{...s.skel, width: 36, height: 36, borderRadius: 10}} />
+        <div style={{...s.skel, height: 18, width: '50%'}} />
+      </div>
+      <div style={s.body}>
+        <div style={{...s.skel, height: 12, width: '70%'}} />
+        <div style={{...s.skel, height: 12, width: '60%'}} />
+        <div style={{...s.skel, height: 12, width: '40%'}} />
+      </div>
+    </div>
+  );
+}
+
+function getExpiry(p){
   return p?.expires_at || p?.subscription_expires_at || null;
 }
-
-function isExpired(date) {
-  try {
-    const d = new Date(date);
-    return !isNaN(d) && d.getTime() < Date.now();
-  } catch {
-    return false;
-  }
+function isExpired(date){
+  const d = new Date(date);
+  return !isNaN(d) && d.getTime() < Date.now();
 }
-
-function isExpiringSoon(date) {
+function isExpiringSoon(date){
   const d = new Date(date);
   if (isNaN(d)) return false;
-  const diffMs = d.getTime() - Date.now();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  return diffMs >= 0 && diffDays <= 7;
+  const diff = d.getTime() - Date.now();
+  const days = Math.ceil(diff / (1000*60*60*24));
+  return diff >= 0 && days <= 7;
 }
-
-export const COLORS = {
-  green: '#22c55e',
-  amber: '#f59e0b',
-  red: '#ef4444',
-  grey: '#9ca3af',
-};
-
-function computeStatus(active, expiryDate) {
-  // Returns { color, label }
-  let color = COLORS.grey;
-  let label = 'Inactive';
-  if (!expiryDate) return active ? { color: COLORS.green, label: 'Active' } : { color, label };
-
+function computeStatus(active, expiryDate){
+  const GREY = '#9ca3af', GREEN = '#22c55e', AMBER = '#f59e0b', RED = '#ef4444';
+  if (!expiryDate) return active ? { color: GREEN, label: 'Active' } : { color: GREY, label: 'Inactive' };
   const d = new Date(expiryDate);
-  if (isNaN(d)) return active ? { color: COLORS.green, label: 'Active' } : { color, label };
-
-  const diffMs = d.getTime() - Date.now();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  if (diffMs < 0) return { color: COLORS.red, label: `Expired (${formatDate(expiryDate)})` };
-  if (diffDays <= 7) return { color: COLORS.amber, label: `Expiring soon (${formatDate(expiryDate)})` };
-  return { color: COLORS.green, label: `Active (${formatDate(expiryDate)})` };
+  if (isNaN(d)) return active ? { color: GREEN, label: 'Active' } : { color: GREY, label: 'Inactive' };
+  const diff = d.getTime() - Date.now();
+  const days = Math.ceil(diff / (1000*60*60*24));
+  if (diff < 0) return { color: RED, label: `Expired (${formatDate(expiryDate)})` };
+  if (days <= 7) return { color: AMBER, label: `Expiring soon (${formatDate(expiryDate)})` };
+  return { color: GREEN, label: `Active (${formatDate(expiryDate)})` };
 }
-
-function formatDate(date) {
+function formatDate(date){
   const d = new Date(date);
   if (isNaN(d)) return String(date);
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
 }
 
-function styles() {
+function styles(){
+  const border = '1px solid rgba(255,255,255,0.08)';
   const shadow = '0 10px 20px rgba(0,0,0,0.08), 0 6px 6px rgba(0,0,0,0.05)';
-  const radius = 20;
-  const font = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
-
   return {
-    appShell: {
-      minHeight: '100vh',
-      background: 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)',
-      color: '#e5e7eb',
-      fontFamily: font,
-      display: 'grid',
-      gridTemplateRows: 'auto 1fr auto',
-    },
+    app: { minHeight: '100vh', background: 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)', color: '#e5e7eb', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif', display: 'grid', gridTemplateRows: 'auto 1fr auto' },
     main: { padding: 20, maxWidth: 1100, margin: '0 auto', width: '100%' },
+    h1: { margin: 0, color: '#fff' },
+    headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 },
 
-    legendWrap: {
-      display: 'flex',
-      gap: 16,
-      alignItems: 'center',
-      padding: '10px 12px',
-      borderRadius: 12,
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      marginBottom: 16,
-    },
+    card: { background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))', border, borderRadius: 18, boxShadow: shadow, overflow: 'hidden' },
+    cardHeader: { display: 'flex', alignItems: 'center', gap: 10, padding: 16, borderBottom: border },
+    emoji: { width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(34,197,94,0.15)' },
+    title: { margin: 0, fontSize: 18, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 },
+    dot: { width: 10, height: 10, borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)', display: 'inline-block' },
+    body: { padding: 16, display: 'grid', gap: 10 },
+    footer: { padding: 16, borderTop: border, display: 'flex', justifyContent: 'flex-end' },
 
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' },
-
-    // Card
-    card: {
-      background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: radius,
-      boxShadow: shadow,
-      overflow: 'hidden',
-      transition: 'transform .2s ease, box-shadow .2s ease, border-color .2s ease',
-    },
-    cardHeader: { display: 'flex', alignItems: 'center', gap: 10, padding: 16, borderBottom: '1px solid rgba(255,255,255,0.08)' },
-    emojiBadge: { width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(34,197,94,0.15)' },
-    cardTitle: { margin: 0, fontSize: 18, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 },
-    statusDot: { width: 10, height: 10, borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)', display: 'inline-block' },
-
-    cardBody: { padding: 16, display: 'grid', gap: 8 },
-    cardFooter: { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: 16, borderTop: '1px solid rgba(255,255,255,0.08)' },
-
-    // KV rows
-    kvRow: { display: 'grid', gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 10 },
+    row: { display: 'grid', gridTemplateColumns: '160px 1fr', alignItems: 'center', gap: 10 },
     k: { color: '#94a3b8', fontSize: 13 },
-    v: { color: '#e5e7eb', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8 },
-    code: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: 13, background: 'rgba(15,23,42,0.7)', padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' },
+    v: { color: '#e5e7eb', fontSize: 14 },
+    code: { background: 'rgba(15,23,42,0.7)', padding: '4px 6px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)' },
 
-    // Buttons
-    button: { background: 'rgba(255,255,255,0.08)', color: '#e5e7eb', border: '1px solid rgba(255,255,255,0.12)', padding: '8px 12px', borderRadius: 10, cursor: 'pointer', transition: 'transform .15s ease, background .15s ease, border-color .15s ease' },
-    buttonGhost: { background: 'transparent' },
-    buttonPrimary: { background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', color: '#0b1220', fontWeight: 700 },
-    refreshBtn: { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#e5e7eb', padding: '8px 12px', borderRadius: 10 },
+    btnPrimary: { background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', color: '#0b1220', fontWeight: 700, padding: '8px 12px', borderRadius: 10, cursor: 'pointer' },
+    refreshBtn: { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#e5e7eb', padding: '8px 12px', borderRadius: 10, cursor: 'pointer' },
 
-    // Alerts & Empty
     alertError: { background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#fecaca', padding: 12, borderRadius: 12, marginBottom: 16 },
     empty: { textAlign: 'center', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: 16, padding: 28, color: '#94a3b8', background: 'rgba(255,255,255,0.04)' },
-    emptyIcon: { fontSize: 36, marginBottom: 6 },
-    emptyTitle: { margin: '6px 0', color: '#e5e7eb' },
-    emptyText: { margin: 0 },
 
-    // Skeletons
-    cardSkeleton: { background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 16, boxShadow: shadow, display: 'grid', gap: 10, overflow: 'hidden' },
-    skelTitle: { height: 18, width: '60%', background: 'linear-gradient(90deg, rgba(148,163,184,0.25), rgba(148,163,184,0.12), rgba(148,163,184,0.25))', borderRadius: 6, animation: 'pulse 1.6s ease-in-out infinite' },
-    skelLine: { height: 12, width: '100%', background: 'linear-gradient(90deg, rgba(148,163,184,0.25), rgba(148,163,184,0.12), rgba(148,163,184,0.25))', borderRadius: 6, animation: 'pulse 1.6s ease-in-out infinite' },
-    skelBadgeRow: { display: 'flex', gap: 8, marginTop: 4 },
-    skelBadge: { height: 22, width: 80, background: 'linear-gradient(90deg, rgba(148,163,184,0.25), rgba(148,163,184,0.12), rgba(148,163,184,0.25))', borderRadius: 999, animation: 'pulse 1.6s ease-in-out infinite' },
-
-    expiredBadge: { marginLeft: 8, fontSize: 12, padding: '2px 8px', borderRadius: 999, background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)', color: '#fecaca' },
-    soonBadge: { marginLeft: 8, fontSize: 12, padding: '2px 8px', borderRadius: 999, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.35)', color: '#fde68a' },
-    footer: { padding: 14, textAlign: 'center', color: '#64748b', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.7)' },
+    skel: { background: 'linear-gradient(90deg, rgba(148,163,184,0.25), rgba(148,163,184,0.12), rgba(148,163,184,0.25))', borderRadius: 6, animation: 'pulse 1.6s ease-in-out infinite' },
+    footerBar: { padding: 14, textAlign: 'center', color: '#64748b', borderTop: border, background: 'rgba(15, 23, 42, 0.7)' },
+    footer: { padding: 14, textAlign: 'center', color: '#64748b', borderTop: border, background: 'rgba(15, 23, 42, 0.7)' },
   };
 }

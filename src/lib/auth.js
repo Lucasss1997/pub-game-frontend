@@ -27,3 +27,8 @@ export function clearToken() {
     console.error('Error removing token from localStorage:', err);
   }
 }
+
+// Check if a token exists (user is logged in)
+export function isLoggedIn() {
+  return !!getToken();
+}

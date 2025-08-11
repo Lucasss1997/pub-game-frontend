@@ -100,4 +100,4 @@ const s = {
   input: { padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,0.15)', background:'transparent', color:'#fff', width:90, textAlign:'center', letterSpacing:2 },
   btn: { padding:'8px 12px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#0b1220', fontWeight:700, cursor:'pointer' },
   btnGhost: { padding:'8px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,0.15)', background:'transparent', color:'#e5e7eb', cursor:'pointer' },
-};
+}

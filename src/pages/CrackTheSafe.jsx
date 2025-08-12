@@ -1,48 +1,53 @@
-import React, { useState } from 'react';
-import { api } from '../lib/api';
+import React, { useEffect, useState } from 'react';
+import { connectLive } from '../../lib/live';
+import { api } from '../../lib/api'; // your existing helper
 
-export default function CrackTheSafe(){
-  const [guess,setGuess]=useState('');
-  const [msg,setMsg]=useState('');
-  const [err,setErr]=useState('');
-  const [busy,setBusy]=useState(false);
+export default function CrackSafePublic() {
+  const [pubId, setPubId] = useState(null);
+  const [ticketPrice, setTicketPrice] = useState(200); // cents default £2.00
+  const [jackpot, setJackpot] = useState(0);          // cents
 
-  async function submit(e){
-    e.preventDefault(); setMsg(''); setErr('');
-    try{
-      setBusy(true);
-      const d = await api.post('/api/games/crack/guess',{ guess });
-      // server returns { result: 'correct' | 'wrong' }
-      if(d?.result==='correct') setMsg('✅ Correct! Winner!');
-      else setMsg('❌ Wrong code. Try again!');
-      setGuess('');
-    }catch(ex){ setErr(ex.message||'Error'); }
-    finally{ setBusy(false); }
-  }
+  // load initial pubId + prices/jackpot (you likely have pubId from QR params)
+  useEffect(() => {
+    (async () => {
+      try {
+        const dash = await api.get('/api/dashboard'); // uses token if set; otherwise pass pub via QR param in your own endpoint
+        const id = dash?.pubs?.[0]?.id || 1;
+        setPubId(id);
+
+        // load current price for crack_safe
+        const p = await api.get('/api/admin/products'); // if auth needed for admin, swap to a public products endpoint in future
+        const list = Array.isArray(p?.products) ? p.products : [];
+        const crack = list.find(x => x.game_key === 'crack_safe');
+        if (crack) setTicketPrice(crack.price_cents);
+
+        const j = await api.get('/api/admin/jackpot');
+        if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
+      } catch { /* ignore on public */ }
+    })();
+  }, []);
+
+  // live updates
+  useEffect(() => {
+    if (!pubId) return;
+    const es = connectLive(pubId, {
+      onProducts: (p) => {
+        if (p?.game_key === 'crack_safe' && typeof p.price_cents === 'number') {
+          setTicketPrice(p.price_cents);
+        }
+      },
+      onJackpot: (j) => {
+        if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
+      },
+    });
+    return () => es.close && es.close();
+  }, [pubId]);
 
   return (
-    <div className="pg-wrap">
-      <div className="pg-narrow pg-stack">
-        <div className="pg-card">
-          <h1 className="pg-title">CRACK THE SAFE</h1>
-          <p className="pg-sub">Enter a 3‑digit code</p>
-
-          {err && <div className="pg-bad">{err}</div>}
-          {msg && <div className="pg-good">{msg}</div>}
-
-          <form onSubmit={submit} className="pg-stack">
-            <input className="pg-input" inputMode="numeric" pattern="[0-9]*" maxLength={3}
-              value={guess} onChange={e=>setGuess(e.target.value.replace(/\D/g,''))} placeholder="000–999" />
-            <button className="pg-btn" disabled={busy || guess.length!==3}>
-              {busy ? 'Checking…' : 'Submit Guess'}
-            </button>
-          </form>
-
-          <div className="pg-row" style={{marginTop:10}}>
-            <a className="pg-btn ghost" href="/dashboard">Back</a>
-          </div>
-        </div>
-      </div>
+    <div style={{ padding: 20, color: '#fff' }}>
+      <h1>Crack the Safe</h1>
+      <p>Ticket: £{(ticketPrice/100).toFixed(2)} · Jackpot: £{(jackpot/100).toFixed(2)}</p>
+      {/* ...rest of your game UI... */}
     </div>
   );
 }

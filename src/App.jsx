@@ -1,54 +1,77 @@
+// src/App.jsx
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
-import { isLoggedIn } from './lib/auth';
-import PrivateRoute from './components/PrivateRoute';
 import TopNav from './components/TopNav';
+import PrivateRoute from './components/PrivateRoute';
 
-import Home from './pages/Home';
-import LoginPage from './LoginPage';
-import DashboardPage from './DashboardPage';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Pricing from './pages/Pricing';
+import Raffle from './pages/Raffle';
+import Enter from './pages/Enter';
 
 import CrackSafePublic from './pages/play/CrackSafePublic';
 import WhatsInTheBoxPublic from './pages/play/WhatsInTheBoxPublic';
 
+// Simple layout wrappers so TopNav shows on both public & private pages
+function PublicLayout() {
+  return (
+    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#e5e7eb' }}>
+      <TopNav />
+      <Outlet />
+    </div>
+  );
+}
+
+function PrivateLayout() {
+  return (
+    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#e5e7eb' }}>
+      <TopNav />
+      <Outlet />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <div style={shell}>
-        <TopNav />
-        <main style={main}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route
-              path="/login"
-              element={isLoggedIn() ? <Navigate to="/dashboard" replace /> : <LoginPage />}
-            />
-            {/* Public play pages (QR) */}
-            <Route path="/play/crack-the-safe" element={<CrackSafePublic />} />
-            <Route path="/play/whats-in-the-box" element={<WhatsInTheBoxPublic />} />
-            {/* Protected */}
-            <Route element={<PrivateRoute />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-            </Route>
-            {/* Fallback */}
-            <Route
-              path="*"
-              element={<Navigate to={isLoggedIn() ? '/dashboard' : '/login'} replace />}
-            />
-          </Routes>
-        </main>
-      </div>
+      <Routes>
+        {/* Public routes */}
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login" element={<Login />} />
+
+          {/* Public entry (QR → pay) */}
+          <Route path="/enter/:pubId/:gameKey" element={<Enter />} />
+
+          {/* Public play pages (customers can access directly or via QR) */}
+          <Route path="/play/crack-the-safe" element={<CrackSafePublic />} />
+          <Route path="/play/whats-in-the-box" element={<WhatsInTheBoxPublic />} />
+        </Route>
+
+        {/* Private (requires auth) */}
+        <Route element={<PrivateRoute />}>
+          <Route element={<PrivateLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/raffle" element={<Raffle />} />
+          </Route>
+        </Route>
+
+        {/* 404 */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </BrowserRouter>
   );
 }
 
-const shell = {
-  minHeight:'100vh',
-  background:'linear-gradient(180deg,#0b1220 0%, #0f172a 100%)',
-  color:'#e5e7eb',
-  fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif',
-  display:'grid',
-  gridTemplateRows:'auto 1fr'
-};
-const main = { padding:20, maxWidth:1100, margin:'0 auto', width:'100%' };
+function NotFound() {
+  return (
+    <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
+      <h1 style={{ marginTop: 0 }}>Not found</h1>
+      <p>That page doesn’t exist.</p>
+      <a href="/" style={{ color: '#22c55e', textDecoration: 'none' }}>Go home</a>
+    </div>
+  );
+}

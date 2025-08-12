@@ -1,21 +1,12 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import GlassCard from '../components/GlassCard';
-import NeonButton from '../components/NeonButton';
+import '../ui/pubgame-theme.css';
 
-export default function Pricing(){
-  const navigate = useNavigate();
-
+export default function Pricing() {
   return (
     <div className="neon-wrap">
-      <div className="neon-grid" style={{maxWidth:900}}>
-        <GlassCard tone="newgame" title="PRICING">
-          <p>Configure entry prices in admin/Stripe. (UI coming soon.)</p>
-          <div style={{display:'flex',gap:10}}>
-            <NeonButton onClick={() => navigate(-1)}>Back</NeonButton>
-          </div>
-        </GlassCard>
-      </div>
+      <h2>Pricing</h2>
+      <p>Set up your pub’s games with the right entry price.</p>
+      <p>Use the Admin panel to change prices and jackpots.</p>
     </div>
   );
 }

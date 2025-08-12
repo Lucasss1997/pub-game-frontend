@@ -1,101 +1,98 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 
 export default function Enter() {
   const { pubId, gameKey } = useParams();
-  const [search] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [productId, setProductId] = useState('');
-  const [mobile, setMobile] = useState(search.get('m') || '');
-  const [loading, setLoading] = useState(true);
+  const [phone, setPhone] = useState('');
   const [err, setErr] = useState('');
-  const [info, setInfo] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [payUrl, setPayUrl] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await api.get(`/api/raffle/products?pubId=${pubId}&gameKey=${gameKey}`);
-        setProducts(r.products || []);
-        if (r.products?.[0]) setProductId(r.products[0].id);
+        const d = await api.get(`/api/raffle/products?pubId=${pubId}&gameKey=${gameKey}`);
+        setProducts(d?.products || []);
+        if (d?.products?.[0]) setProductId(d.products[0].id);
       } catch (e) {
         setErr(e.message || 'Failed to load products');
-      } finally {
-        setLoading(false);
       }
     })();
   }, [pubId, gameKey]);
 
-  const submit = async (e) => {
+  async function onPay(e) {
     e.preventDefault();
     setErr('');
-    if (!productId) return setErr('Select an entry price.');
-    if (!/^\+?\d{8,15}$/.test(mobile)) return setErr('Enter a valid mobile (e.g. +447123456789).');
-    try {
-      setInfo('Contacting Stripe…');
-      const { checkoutUrl } = await api.post('/api/raffle/enter', {
-        pubId: Number(pubId),
-        gameKey,
-        productId,
-        mobile,
-      });
-      window.location.href = checkoutUrl;
-    } catch (e2) {
-      setErr(e2.message || 'Could not start payment');
-      setInfo('');
+    if (!productId || !phone) {
+      setErr('Please select a price and enter your mobile number.');
+      return;
     }
-  };
-
-  if (loading) return <div style={wrap}><p>Loading…</p></div>;
+    try {
+      setLoading(true);
+      const d = await api.post('/api/raffle/checkout', { pubId, gameKey, productId, phone });
+      if (!d?.checkoutUrl) throw new Error('No checkout URL');
+      setPayUrl(d.checkoutUrl);
+      window.location.href = d.checkoutUrl; // go to Stripe
+    } catch (e) {
+      setErr(e.message || 'Unable to start checkout');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div style={wrap}>
+    <div style={shell}>
       <main style={main}>
-        <h1 style={{marginTop:0, marginBottom:8}}>Enter to Play</h1>
-        <p style={muted}>{gameKey.replaceAll('_',' ')}</p>
+        <div style={card}>
+          <h1 style={{marginTop:0}}>Enter – {titleFor(gameKey)}</h1>
+          {err && <div style={bad}>{err}</div>}
 
-        {err && <div style={alert}>{err}</div>}
-        {info && <div style={infoBox}>{info}</div>}
+          <form onSubmit={onPay} style={{display:'grid', gap:10}}>
+            <label style={field}>
+              <span style={label}>Entry price</span>
+              <select value={productId} onChange={e=>setProductId(e.target.value)} style={input}>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} — £{(p.price_cents/100).toFixed(2)}</option>
+                ))}
+              </select>
+            </label>
 
-        <form onSubmit={submit} style={card}>
-          <label style={field}>
-            <span style={label}>Choose entry</span>
-            <select style={input} value={productId} onChange={(e)=>setProductId(e.target.value)}>
-              {products.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — £{(p.price_cents/100).toFixed(2)}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label style={field}>
+              <span style={label}>Mobile number (UK)</span>
+              <input style={input} type="tel" value={phone} onChange={e=>setPhone(e.target.value)}
+                     placeholder="+447123456789" required />
+            </label>
 
-          <label style={field}>
-            <span style={label}>Mobile (E.164)</span>
-            <input
-              style={input}
-              placeholder="+447123456789"
-              value={mobile}
-              onChange={(e)=>setMobile(e.target.value)}
-            />
-          </label>
+            <button style={button} disabled={loading || !productId}>
+              {loading ? 'Redirecting…' : 'Pay & Enter'}
+            </button>
+          </form>
 
-          <button style={btn} type="submit">Pay & Enter</button>
-        </form>
-
-        <p style={fine}>By entering you agree to the game rules & T&Cs.</p>
+          {payUrl && (
+            <p style={{color:'#94a3b8', marginTop:8}}>
+              If you weren’t redirected, <a href={payUrl} style={{color:'#22c55e'}}>tap here</a>.
+            </p>
+          )}
+        </div>
       </main>
     </div>
   );
 }
 
-const wrap = { minHeight:'100vh', background:'#0f172a', color:'#e5e7eb', fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif', display:'grid', placeItems:'center' };
-const main = { padding:20, width:'min(520px,92vw)' };
-const card = { background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:16, padding:16, display:'grid', gap:12 };
+function titleFor(key){
+  if (key === 'crack_the_safe') return 'Crack the Safe';
+  if (key === 'whats_in_the_box') return 'What’s in the Box';
+  return key;
+}
+
+const shell = { minHeight:'100vh', background:'#0f172a', color:'#e5e7eb' };
+const main  = { maxWidth:520, margin:'0 auto', padding:20 };
+const card  = { background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:16 };
 const field = { display:'grid', gap:6 };
-const label = { color:'#94a3b8', fontSize:13 };
-const input = { padding:'10px 12px', borderRadius:12, border:'1px solid rgba(255,255,255,0.18)', background:'rgba(15,23,42,0.8)', color:'#fff' };
-const btn = { padding:'10px 14px', borderRadius:12, border:0, background:'#22c55e', color:'#0f172a', fontWeight:800, cursor:'pointer' };
-const muted = { color:'#94a3b8' };
-const fine = { color:'#64748b', fontSize:12, marginTop:10 };
-const alert = { background:'rgba(239,68,68,.12)', border:'1px solid rgba(239,68,68,.35)', color:'#fecaca', padding:10, borderRadius:10, marginBottom:10 };
-const infoBox = { background:'rgba(59,130,246,.12)', border:'1px solid rgba(59,130,246,.35)', color:'#bfdbfe', padding:10, borderRadius:10, marginBottom:10 };
+const label = { fontSize:12, color:'#94a3b8' };
+const input = { padding:'10px 12px', borderRadius:12, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(15,23,42,0.7)', color:'#e5e7eb' };
+const button= { padding:'10px 14px', borderRadius:12, border:'none', background:'#22c55e', color:'#0b1220', fontWeight:800, cursor:'pointer' };
+const bad   = { background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.35)', color:'#fecaca', padding:8, borderRadius:10 };

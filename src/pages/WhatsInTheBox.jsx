@@ -1,46 +1,49 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { api } from '../lib/api';
-import GlassCard from '../components/GlassCard';
-import NeonButton from '../components/NeonButton';
 
 export default function WhatsInTheBox(){
-  const [choice,setChoice] = useState(1);
-  const [status,setStatus] = useState('');
-  const [err,setErr] = useState('');
-  const audioRef = useRef(null);
+  const [pick,setPick]=useState(null);
+  const [msg,setMsg]=useState('');
+  const [err,setErr]=useState('');
+  const [busy,setBusy]=useState(false);
 
-  useEffect(()=>{ audioRef.current?.play().catch(()=>{}); },[]);
-
-  async function onSubmit(e){
-    e.preventDefault(); setErr(''); setStatus('Checking…');
+  async function submit(){
+    setMsg(''); setErr('');
     try{
-      const r = await api.post('/api/games/whats-in-the-box/pick',{ box: choice });
-      if(r.result==='win') setStatus('🎉 You picked the prize!');
-      else if(r.result==='lose') setStatus('Not this time. Try again!');
-      else setStatus(JSON.stringify(r));
+      setBusy(true);
+      const d = await api.post('/api/games/box/pick',{ box: pick });
+      // server returns { result: 'win' | 'lose' }
+      setMsg(d?.result==='win' ? '🎉 You picked the prize!' : '😅 Unlucky this time!');
     }catch(ex){ setErr(ex.message||'Error'); }
+    finally{ setBusy(false); }
   }
 
   return (
-    <div className="neon-wrap">
-      <div className="neon-grid" style={{maxWidth:720}}>
-        <GlassCard tone="game" title="WHAT’S IN THE BOX" subtitle="Live">
-          <audio ref={audioRef} src="/audio/whats-in-the-box-intro-enGB-announcer-v1.mp3" preload="none"/>
-          {status && <div className="info">{status}</div>}
-          {err && <div className="bad">{err}</div>}
-          <form onSubmit={onSubmit} style={{display:'grid',gap:12}}>
-            <div style={{display:'grid',gap:10,gridTemplateColumns:'repeat(5,1fr)'}}>
-              {[1,2,3,4,5].map(n=>(
-                <button key={n} type="button"
-                        onClick={()=>setChoice(n)}
-                        className={n===choice?'btn':'btn ghost'}>
-                  {n}
-                </button>
-              ))}
-            </div>
-            <NeonButton type="submit">Open</NeonButton>
-          </form>
-        </GlassCard>
+    <div className="pg-wrap">
+      <div className="pg-narrow pg-stack">
+        <div className="pg-card">
+          <h1 className="pg-title">WHAT’S IN THE BOX</h1>
+          <p className="pg-sub">Tap a box to choose</p>
+
+          {err && <div className="pg-bad">{err}</div>}
+          {msg && <div className="pg-good">{msg}</div>}
+
+          <div className="pg-row" style={{marginTop:6}}>
+            {[1,2,3,4,5,6].map(n=>(
+              <button key={n} className="pg-btn" onClick={()=>setPick(n)}
+                style={{background: pick===n ? '#7c3aed' : undefined}}>
+                Box {n}
+              </button>
+            ))}
+          </div>
+
+          <div className="pg-row" style={{marginTop:10}}>
+            <button className="pg-btn" onClick={submit} disabled={busy || !pick}>
+              {busy ? 'Checking…' : 'Submit'}
+            </button>
+            <a className="pg-btn ghost" href="/dashboard">Back</a>
+          </div>
+        </div>
       </div>
     </div>
   );

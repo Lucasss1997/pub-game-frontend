@@ -1,65 +1,57 @@
-/* Global background + type */
 :root{
-  --bg1:#1d1df7; --bg2:#1b4df7;
-  --card-orange:#f59e0b; --card-purple:#8b5cf6;
-  --card-teal:#14b8a6; --card-green:#22c55e;
-  --ink:#0b1220; --ink-inv:#ffffff;
+  --bg:#f59e0b;           /* <- change this to switch whole app colour */
+  --ink:#2e1065;          /* deep purple headings/buttons */
+  --field:#fde68a;        /* yellow inputs */
+  --btn:#8b5cf6;          /* purple button */
   --shadow:0 18px 40px rgba(0,0,0,.28);
-  --radius:22px;
+  --radius:26px;
+  --radius-sm:18px;
 }
+
 html,body,#root{height:100%}
 *{box-sizing:border-box}
 body{
-  margin:0;
-  background: radial-gradient(1200px 800px at 50% -200px, var(--bg2), var(--bg1));
-  color:var(--ink-inv);
+  margin:0; background:var(--bg); color:#1f2937;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
 }
 
-/* Layout shell */
-.pg-wrap{min-height:100vh;display:grid;place-items:center;padding:22px}
-.pg-grid{width:min(1200px,94vw);display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+/* layout */
+.pg-wrap{min-height:100vh; display:grid; place-items:center; padding:22px}
+.pg-narrow{width:min(480px,92vw)}
+.pg-wide{width:min(1100px,94vw)}
+.pg-stack{display:grid; gap:18px}
 
-/* Cards */
+/* cards */
 .pg-card{
+  background:rgba(255,255,255,.22);
   border-radius:var(--radius);
   box-shadow:var(--shadow);
   padding:20px;
-  display:grid; gap:14px;
-  color:var(--ink);
+  backdrop-filter: blur(4px);
 }
-.pg-card h2{margin:6px 0 2px 0;font-size:28px;line-height:1.1;color:var(--ink)}
-.pg-card small{opacity:.9;font-weight:600}
-
-/* Card tones */
-.pg-card.orange{background:var(--card-orange)}
-.pg-card.purple{background:var(--card-purple); color:#fff}
-.pg-card.teal{background:var(--card-teal); color:#032c2a}
-.pg-card.green{background:var(--card-green); color:#052a15}
-
-/* Fields / buttons */
-.pg-field{display:grid;gap:6px}
-.pg-label{font-size:13px;opacity:.9;color:#0b1220}
-.pg-input,.pg-select{
-  width:100%; padding:12px 14px; border:none; outline:none;
-  background:rgba(255,255,255,.22); color:#fff; border-radius:14px;
-  font-weight:600;
+.pg-title{
+  margin:0 0 6px 0; font-weight:900; color:var(--ink);
+  letter-spacing:.3px; font-size:36px; line-height:1.05;
 }
-.pg-input::placeholder{color:rgba(255,255,255,.82)}
+.pg-sub{margin:0 0 8px 0; color:#3f3f46; font-weight:600}
+
+/* fields/buttons */
+.pg-field{display:grid; gap:6px}
+.pg-label{font-weight:800; color:var(--ink)}
+.pg-input, .pg-number, .pg-select{
+  width:100%; padding:14px 16px; border:none; outline:none;
+  background:var(--field); border-radius:var(--radius-sm); font-weight:800; color:#1f2937;
+}
+.pg-row{display:flex; flex-wrap:wrap; gap:10px}
 .pg-btn{
-  display:inline-block; text-align:center; cursor:pointer;
-  border:none; border-radius:14px; padding:12px 16px;
-  font-weight:900; color:#0b1220; background:#22c55e;
-  box-shadow:0 8px 16px rgba(0,0,0,.25);
+  appearance:none; border:none; cursor:pointer; font-weight:900;
+  background:var(--btn); color:#fef3c7; padding:12px 18px;
+  border-radius:var(--radius-sm); box-shadow:var(--shadow);
 }
-.pg-btn.ghost{background:rgba(255,255,255,.22); color:#fff}
-.pg-btn.danger{background:#ef4444; color:#fff}
+.pg-btn.ghost{background:transparent; color:var(--ink); border:2px solid var(--ink)}
+.pg-bad{background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px; border-radius:12px}
+.pg-good{background:#dcfce7; border:1px solid #22c55e; color:#064e3b; padding:10px; border-radius:12px}
 
-/* Alerts */
-.pg-bad{background:rgba(239,68,68,.18); border:1px solid rgba(239,68,68,.45); padding:10px; border-radius:12px; color:#3c0d0d}
-.pg-good{background:rgba(34,197,94,.18); border:1px solid rgba(34,197,94,.45); padding:10px; border-radius:12px; color:#06240f}
-
-/* Simple nav bar to match look */
-.pg-nav{width:100%; max-width:min(1200px,94vw); margin:0 auto 18px; display:flex; align-items:center; gap:10px}
-.pg-brand{display:flex; align-items:center; gap:10px; font-weight:900; letter-spacing:.2px}
-.pg-chip{margin-left:auto; padding:8px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(0,0,0,.2); color:#fff; text-decoration:none}
+/* simple header */
+.pg-nav{position:fixed; top:10px; left:0; right:0; display:flex; gap:10px; justify-content:center; pointer-events:none}
+.pg-nav a{pointer-events:auto; text-decoration:none; color:#fff; font-weight:900; padding:8px 12px; border-radius:999px; background:rgba(0,0,0,.25)}

@@ -1,4 +1,4 @@
-// fetch wrapper that points to your backend + adds Bearer token if available
+// fetch wrapper that uses your backend base + adds Bearer token if present
 import { getToken } from './auth';
 
 const BASE =
@@ -15,9 +15,11 @@ async function req(method, path, body) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+
   const text = await res.text();
   let data;
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+
   if (!res.ok) {
     const msg = data?.error || data?.message || `HTTP ${res.status}`;
     throw new Error(msg);

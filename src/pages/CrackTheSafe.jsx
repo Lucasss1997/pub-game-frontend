@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import '../ui/pubgame-theme.css'; // keep your theme
+import '../ui/pubgame-theme.css';
 
 export default function CrackTheSafe() {
   const [price, setPrice] = useState(0);
@@ -11,36 +11,71 @@ export default function CrackTheSafe() {
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    // load ticket price & jackpot for this pub/game
     (async () => {
       try {
         const meta = await api.get('/api/public/game-meta?game_key=crack_safe');
-        // meta: { price_cents, jackpot_cents }
         setPrice((meta?.price_cents ?? 0) / 100);
         setJackpot((meta?.jackpot_cents ?? 0) / 100);
-      } catch (e) {
-        // still show the UI even if meta fails
-      }
+      } catch {}
     })();
   }, []);
+
+  // Try several likely endpoints; pick the first that isn't a 404
+  async function postGuessSmart(payload) {
+    const candidates = [
+      '/api/games/crack',                 // simple
+      '/api/games/crack_safe/guess',      // snake + /guess
+      '/api/games/crack-safe/guess',      // kebab + /guess
+      '/api/play/crack',                  // play namespace
+      '/api/play/crack_safe/guess',       // play + snake
+      '/api/public/crack',                // public
+    ];
+
+    for (const path of candidates) {
+      try {
+        const res = await api.post(path, payload);
+        return { path, res };
+      } catch (e) {
+        // 404: try the next candidate, anything else: bubble up
+        if ((e.status || e.code) === 404 || /not found/i.test(e.message || '')) continue;
+        throw e;
+      }
+    }
+    // if we reached here, every candidate 404'd
+    const error = new Error('No matching crack endpoint found (404).');
+    error.status = 404;
+    throw error;
+  }
 
   const submitGuess = async (e) => {
     e.preventDefault();
     setErr('');
     setMsg('');
+
     if (!/^\d{3}$/.test(guess)) {
       setErr('Enter a 3‑digit code (000–999).');
       return;
     }
+
     try {
       setLoading(true);
-      // Adjust this endpoint to your backend if needed:
-      // expected response: { result: 'correct' | 'incorrect' }
-      const res = await api.post('/api/games/crack', { guess });
-      if (res?.result === 'correct') setMsg('🎉 Correct! Call the player up!');
+      const { res } = await postGuessSmart({ guess });
+
+      // Normalise possible backend shapes
+      // Accept any of: {result:'correct'|'incorrect'} | {correct:true|false} | {win:true|false}
+      const isCorrect =
+        res?.result === 'correct' ||
+        res?.correct === true ||
+        res?.win === true;
+
+      if (isCorrect) setMsg('🎉 Correct! Call the player up!');
       else setMsg('❌ Not quite. Try again!');
     } catch (e2) {
-      setErr(e2.message || 'Could not check code.');
+      if (e2.status === 404) {
+        setErr('Game endpoint not found on the server.');
+      } else {
+        setErr(e2.message || 'Could not check code.');
+      }
     } finally {
       setLoading(false);
     }
@@ -50,9 +85,7 @@ export default function CrackTheSafe() {
     <div className="pg-wrap">
       <header className="pg-header">
         <h1 className="pg-title">Crack the Safe</h1>
-        <div className="pg-sub">
-          Ticket: £{price.toFixed(2)} · Jackpot: £{jackpot.toFixed(2)}
-        </div>
+        <div className="pg-sub">Ticket: £{price.toFixed(2)} · Jackpot: £{jackpot.toFixed(2)}</div>
       </header>
 
       <main className="pg-main">

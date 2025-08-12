@@ -1,276 +1,219 @@
+// src/pages/Admin.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./admin.css";
+import "./admin.css";                  // stays in src/pages
+import { api } from "../lib/api";      // <— NOTE the ../lib path (inside src)
 
-/* ========== helpers ========== */
-const poundsFromCents = (cents) =>
-  typeof cents === "number" && !Number.isNaN(cents)
-    ? (cents / 100).toFixed(2)
-    : "0.00";
-
-const centsFromPounds = (val) => {
-  const s = (val ?? "").toString().trim();
-  // allow 12, 12.3, 12.34
-  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
-  return Math.round(parseFloat(s) * 100);
-};
-
-const authHeaders = () => {
-  const t = localStorage.getItem("token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-};
-
-// Always show two product cards so UI never “disappears”
-const defaultProducts = () => ([
-  { id: null, game_key: "crack_safe",       name: "£1 Standard Entry", price_cents: 0, active: true },
-  { id: null, game_key: "whats_in_the_box", name: "£1 Standard Entry", price_cents: 0, active: true },
-]);
-
-/* ========== component ========== */
 export default function Admin() {
   const navigate = useNavigate();
 
-  const [products, setProducts] = useState(defaultProducts());
-  const [jackpot, setJackpot]   = useState("0.00");
-  const [busy, setBusy]         = useState(false);
-  const [error, setError]       = useState("");
-  const [diag, setDiag]         = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState("");
+
+  // products state keyed by game_key
+  const [products, setProducts] = useState({
+    crack_safe: { id: null, game_key: "crack_safe", name: "£1 Standard Entry", price: "0.00", active: true },
+    whats_in_the_box: { id: null, game_key: "whats_in_the_box", name: "£1 Standard Entry", price: "0.00", active: true },
+  });
+
+  // jackpot state (in pounds as string for UI)
+  const [jackpot, setJackpot] = useState("0.00");
+  const [saving, setSaving] = useState({}); // per-section saving flags
 
   useEffect(() => {
-    loadAll();
+    (async () => {
+      setError("");
+      setLoading(true);
+      try {
+        // load products
+        const prod = await api.get("/api/admin/products");
+        // ensure array then map into our keyed shape
+        const byKey = { ...products };
+        (Array.isArray(prod) ? prod : []).forEach(p => {
+          if (p && (p.game_key === "crack_safe" || p.game_key === "whats_in_the_box")) {
+            byKey[p.game_key] = {
+              id: p.id ?? null,
+              game_key: p.game_key,
+              name: p.name || byKey[p.game_key].name,
+              price: toPounds(p.price_cents),
+              active: !!p.active,
+            };
+          }
+        });
+        setProducts(byKey);
+
+        // load jackpot
+        const jp = await api.get("/api/admin/jackpot");
+        if (jp && typeof jp.jackpot_cents === "number") {
+          setJackpot(toPounds(jp.jackpot_cents));
+        }
+      } catch (e) {
+        setError(prettyErr(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadAll() {
-    try {
-      setError("");
-      setDiag("");
-
-      const pFetch = fetch("/api/admin/products", { credentials: "include", headers: { ...authHeaders() } });
-      const jFetch = fetch("/api/admin/jackpot",  { credentials: "include", headers: { ...authHeaders() } });
-
-      const [pRes, jRes] = await Promise.all([pFetch, jFetch]);
-
-      // --- PRODUCTS ---
-      if (pRes.ok) {
-        // clone to avoid “Body is disturbed or locked” on Safari
-        const pJson = await pRes.clone().json().catch(() => null);
-        const list = Array.isArray(pJson)
-          ? pJson
-          : Array.isArray(pJson?.products)
-          ? pJson.products
-          : [];
-        const map = Object.fromEntries(list.filter(Boolean).map(p => [p.game_key, p]));
-        const merged = defaultProducts().map(d => (map[d.game_key] ? { ...d, ...map[d.game_key] } : d));
-        setProducts(merged);
-      } else {
-        setProducts(defaultProducts());
-      }
-
-      // --- JACKPOT ---
-      if (jRes.ok) {
-        const j = await jRes.clone().json().catch(() => null);
-        const cents = typeof j?.jackpot_cents === "number" ? j.jackpot_cents : 0;
-        setJackpot(poundsFromCents(cents));
-      }
-    } catch (e) {
-      // keep placeholders visible even on error
-      setProducts(defaultProducts());
-      setError(e.message || "Load failed");
-    }
+  // utils
+  function toPounds(cents) {
+    const n = Number(cents ?? 0);
+    return (n / 100).toFixed(2);
+  }
+  function toCents(poundsStr) {
+    // accept "1", "1.5", "1.50", "£1.50"
+    const clean = String(poundsStr).replace(/[^0-9.]/g, "");
+    if (!/^\d+(\.\d{1,2})?$/.test(clean)) throw new Error("Please enter a valid price like 2 or 2.50");
+    return Math.round(parseFloat(clean) * 100);
+  }
+  function prettyErr(e) {
+    if (e?.response?.error) return `HTTP ${e.response.status || ""} · ${JSON.stringify(e.response.error)}`;
+    if (e?.message) return e.message;
+    return "Load failed";
   }
 
-  function updateProduct(idx, key, value) {
-    setProducts(prev => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [key]: value };
-      return next;
-    });
-  }
-
-  async function saveProduct(idx) {
+  // save handlers
+  const saveProduct = async (game_key) => {
+    setError("");
+    setSaving(s => ({ ...s, [game_key]: true }));
     try {
-      setBusy(true);
-      setError("");
-      const p = products[idx];
-
-      const cents = centsFromPounds(poundsFromCents(p.price_cents));
-      if (cents === null) {
-        setError("Enter a valid ticket price (e.g. 2 or 2.50).");
-        return;
-      }
-
-      const res = await fetch("/api/admin/products", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          id: p.id ?? undefined,
-          game_key: p.game_key,
-          name: p.name,
-          price_cents: cents,
-          // some backends validate a string pattern — mirror it
-          price: String(cents),
-          active: !!p.active,
-        }),
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const saved = await res.clone().json().catch(() => ({}));
-      const merged = saved?.product ?? saved ?? {};
-      setProducts(prev => {
-        const next = [...prev];
-        next[idx] = { ...next[idx], ...merged };
-        if (merged.price_cents == null) next[idx].price_cents = cents; // keep local change if server omitted it
-        return next;
+      const p = products[game_key];
+      await api.post("/api/admin/products", {
+        game_key,
+        name: p.name,
+        price_cents: toCents(p.price),
+        active: !!p.active,
       });
     } catch (e) {
-      setError(e.message || "Save failed");
+      setError(prettyErr(e));
     } finally {
-      setBusy(false);
+      setSaving(s => ({ ...s, [game_key]: false }));
     }
-  }
+  };
 
-  async function saveJackpot(e) {
-    e.preventDefault();
+  const saveJackpot = async () => {
+    setError("");
+    setSaving(s => ({ ...s, jackpot: true }));
     try {
-      setBusy(true);
-      setError("");
-
-      const cents = centsFromPounds(jackpot);
-      if (cents === null) {
-        setError("Enter a valid jackpot (e.g. 100 or 2.50).");
-        return;
-      }
-
-      const res = await fetch("/api/admin/jackpot", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        // send numeric and string to satisfy strict validators
-        body: JSON.stringify({ jackpot_cents: cents, jackpot: String(cents) }),
+      await api.post("/api/admin/jackpot", {
+        jackpot_cents: toCents(jackpot),
       });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await res.clone().json().catch(() => null);
-      setJackpot(poundsFromCents(cents));
     } catch (e) {
-      setError(e.message || "Save failed");
+      setError(prettyErr(e));
     } finally {
-      setBusy(false);
+      setSaving(s => ({ ...s, jackpot: false }));
     }
-  }
+  };
 
-  async function runDiagnostics() {
+  const runDiagnostics = async () => {
+    setError("");
+    setSaving(s => ({ ...s, diag: true }));
     try {
-      setBusy(true);
-      setError("");
-      const res = await fetch("/api/admin/debug", {
-        credentials: "include",
-        headers: { ...authHeaders() },
-      });
-      let out = `HTTP ${res.status}`;
-      const asJson = await res.clone().json().catch(() => null);
-      if (asJson) out += `\n${JSON.stringify(asJson, null, 2)}`;
-      else out += `\n${await res.text()}`;
-      setDiag(out);
+      const me = await api.get("/api/me");
+      const prods = await api.get("/api/admin/products");
+      const jp = await api.get("/api/admin/jackpot");
+      console.log({ me, products: prods?.length, jackpot_cents: jp?.jackpot_cents ?? null });
+      alert("Diagnostics OK. Check console for details (Render logs).");
     } catch (e) {
-      setError(e.message || "Diagnostics failed");
+      setError(prettyErr(e));
     } finally {
-      setBusy(false);
+      setSaving(s => ({ ...s, diag: false }));
     }
-  }
+  };
+
+  // UI helpers
+  const ProductCard = ({ label, game_key }) => {
+    const p = products[game_key];
+
+    return (
+      <section className="admin-card">
+        <h2>{label}</h2>
+
+        <label className="field">
+          <span>Product name</span>
+          <input
+            value={p.name}
+            onChange={(e) =>
+              setProducts((old) => ({ ...old, [game_key]: { ...old[game_key], name: e.target.value } }))
+            }
+            placeholder="Ticket name"
+          />
+        </label>
+
+        <label className="field">
+          <span>Ticket price (£)</span>
+          <input
+            inputMode="decimal"
+            value={p.price}
+            onChange={(e) =>
+              setProducts((old) => ({ ...old, [game_key]: { ...old[game_key], price: e.target.value } }))
+            }
+            placeholder="0.00"
+          />
+        </label>
+
+        <label className="field">
+          <span>Active</span>
+          <select
+            value={p.active ? "yes" : "no"}
+            onChange={(e) =>
+              setProducts((old) => ({ ...old, [game_key]: { ...old[game_key], active: e.target.value === "yes" } }))
+            }
+          >
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </label>
+
+        <button className="btn primary" onClick={() => saveProduct(game_key)} disabled={!!saving[game_key]}>
+          {saving[game_key] ? "Saving..." : "Save"}
+        </button>
+      </section>
+    );
+  };
 
   return (
     <div className="admin-wrap">
-      <div className="admin-panel">
+      <div className="admin-header admin-card">
         <h1>ADMIN</h1>
         <p>Set ticket prices, toggle availability, and manage the jackpot.</p>
 
-        {error && <div className="alert">{error}</div>}
+        {error && <div className="alert error">{error}</div>}
 
         <div className="row">
-          <button className="btn ghost" onClick={() => navigate("/dashboard")}>
-            Back to Dashboard
-          </button>
-          <button className="btn" onClick={runDiagnostics} disabled={busy}>
-            Run diagnostics
+          <button className="btn" onClick={() => navigate("/dashboard")}>Back to Dashboard</button>
+          <button className="btn ghost" onClick={runDiagnostics} disabled={!!saving.diag}>
+            {saving.diag ? "Running..." : "Run diagnostics"}
           </button>
         </div>
+      </div>
 
-        {/* Products */}
-        {products.map((p, i) => (
-          <section key={p.game_key} className="card">
-            <h2>{p.game_key === "crack_safe" ? "Crack the Safe" : "What’s in the Box"}</h2>
+      {loading ? (
+        <section className="admin-card"><p>Loading…</p></section>
+      ) : (
+        <>
+          <ProductCard label="Crack the Safe" game_key="crack_safe" />
+          <ProductCard label="What’s in the Box" game_key="whats_in_the_box" />
 
-            <label className="field">
-              <span>Product name</span>
-              <input
-                value={p.name ?? ""}
-                onChange={(e) => updateProduct(i, "name", e.target.value)}
-                placeholder="£1 Standard Entry"
-              />
-            </label>
-
-            <label className="field">
-              <span>Ticket price (£)</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                value={poundsFromCents(p.price_cents)}
-                onChange={(e) => {
-                  const cents = centsFromPounds(e.target.value);
-                  updateProduct(i, "price_cents", cents === null ? 0 : cents);
-                }}
-                placeholder="1.00"
-              />
-            </label>
-
-            <label className="field">
-              <span>Active</span>
-              <select
-                value={p.active ? "yes" : "no"}
-                onChange={(e) => updateProduct(i, "active", e.target.value === "yes")}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-
-            <button className="btn" onClick={() => saveProduct(i)} disabled={busy}>
-              Save
-            </button>
-          </section>
-        ))}
-
-        {/* Jackpot */}
-        <section className="card">
-          <h2>Jackpot</h2>
-          <form onSubmit={saveJackpot}>
+          <section className="admin-card">
+            <h2>Jackpot</h2>
             <label className="field">
               <span>Jackpot (£)</span>
               <input
-                type="number"
                 inputMode="decimal"
-                step="0.01"
-                min="0"
                 value={jackpot}
                 onChange={(e) => setJackpot(e.target.value)}
                 placeholder="0.00"
               />
             </label>
-            <button className="btn" disabled={busy}>Save jackpot</button>
-          </form>
-        </section>
 
-        {diag && (
-          <section className="card">
-            <h2>Diagnostics</h2>
-            <pre style={{ whiteSpace: "pre-wrap" }}>{diag}</pre>
+            <button className="btn primary" onClick={saveJackpot} disabled={!!saving.jackpot}>
+              {saving.jackpot ? "Saving..." : "Save Jackpot"}
+            </button>
           </section>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

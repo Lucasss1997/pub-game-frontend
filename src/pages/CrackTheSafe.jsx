@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { connectLive } from '../../lib/live';
-import { api } from '../../lib/api'; // your existing helper
+import { connectLive } from '../lib/live';
+import { api } from '../lib/api';
 
 export default function CrackSafePublic() {
   const [pubId, setPubId] = useState(null);

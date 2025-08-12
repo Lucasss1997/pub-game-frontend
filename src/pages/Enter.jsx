@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 
 export default function Enter() {
   const { pubId, gameKey } = useParams();
+  const [search] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [productId, setProductId] = useState('');
-  const [mobile, setMobile] = useState('');
+  const [mobile, setMobile] = useState(search.get('m') || '');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
@@ -30,7 +31,6 @@ export default function Enter() {
     setErr('');
     if (!productId) return setErr('Select an entry price.');
     if (!/^\+?\d{8,15}$/.test(mobile)) return setErr('Enter a valid mobile (e.g. +447123456789).');
-
     try {
       setInfo('Contacting Stripe…');
       const { checkoutUrl } = await api.post('/api/raffle/enter', {

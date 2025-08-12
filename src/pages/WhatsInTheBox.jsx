@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { connectLive } from '../../lib/live';
-import { api } from '../../lib/api';
+import { connectLive } from '../lib/live';
+import { api } from '../lib/api';
 
 export default function WhatsInTheBoxPublic() {
   const [pubId, setPubId] = useState(null);

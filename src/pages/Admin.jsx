@@ -1,104 +1,183 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import './admin.css';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import "./admin.css";
 
+/* ========== helpers ========== */
+const poundsFromCents = (cents) =>
+  typeof cents === "number" && !Number.isNaN(cents)
+    ? (cents / 100).toFixed(2)
+    : "0.00";
+
+const centsFromPounds = (val) => {
+  const s = (val ?? "").toString().trim();
+  // allow 12, 12.3, 12.34
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  return Math.round(parseFloat(s) * 100);
+};
+
+const authHeaders = () => {
+  const t = localStorage.getItem("token");
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
+// Always show two product cards so UI never “disappears”
+const defaultProducts = () => ([
+  { id: null, game_key: "crack_safe",       name: "£1 Standard Entry", price_cents: 0, active: true },
+  { id: null, game_key: "whats_in_the_box", name: "£1 Standard Entry", price_cents: 0, active: true },
+]);
+
+/* ========== component ========== */
 export default function Admin() {
-  const [products, setProducts] = useState([]);
-  const [jackpot, setJackpot] = useState('');
-  const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  const [products, setProducts] = useState(defaultProducts());
+  const [jackpot, setJackpot]   = useState("0.00");
+  const [busy, setBusy]         = useState(false);
+  const [error, setError]       = useState("");
+  const [diag, setDiag]         = useState("");
+
   useEffect(() => {
-    fetchAdminData();
+    loadAll();
   }, []);
 
-  async function fetchAdminData() {
-    setError('');
+  async function loadAll() {
     try {
-      const res = await fetch('/api/admin/products', { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP ${res.status} · ${(await res.text()) || 'Load failed'}`);
-      const data = await res.json();
+      setError("");
+      setDiag("");
 
-      // Convert to a keyed object for easier access
-      const byKey = {};
-      (Array.isArray(data.products) ? data.products : []).forEach((p) => {
-        if (!p) return;
-        const k = p.game_key;
-        byKey[k] = {
-          id: p.id ?? null,
-          game_key: k,
-          name: p.name || '',
-          price: p.price_cents != null ? (p.price_cents / 100).toFixed(2) : '',
-          active: !!p.active,
-        };
-      });
+      const pFetch = fetch("/api/admin/products", { credentials: "include", headers: { ...authHeaders() } });
+      const jFetch = fetch("/api/admin/jackpot",  { credentials: "include", headers: { ...authHeaders() } });
 
-      // Ensure both games always exist
-      setProducts([
-        byKey['crack_safe'] ?? { id: null, game_key: 'crack_safe', name: '£1 Standard Entry', price: '1.00', active: true },
-        byKey['whats_in_the_box'] ?? { id: null, game_key: 'whats_in_the_box', name: '£1 Standard Entry', price: '1.00', active: true },
-      ]);
+      const [pRes, jRes] = await Promise.all([pFetch, jFetch]);
 
-      // Load jackpot separately
-      try {
-        const jr = await fetch('/api/admin/jackpot', { credentials: 'include' });
-        if (jr.ok) {
-          const j = await jr.json();
-          setJackpot(j?.jackpot_cents != null ? (j.jackpot_cents / 100).toFixed(2) : '');
-        }
-      } catch {
-        /* ignore jackpot fetch error */
+      // --- PRODUCTS ---
+      if (pRes.ok) {
+        // clone to avoid “Body is disturbed or locked” on Safari
+        const pJson = await pRes.clone().json().catch(() => null);
+        const list = Array.isArray(pJson)
+          ? pJson
+          : Array.isArray(pJson?.products)
+          ? pJson.products
+          : [];
+        const map = Object.fromEntries(list.filter(Boolean).map(p => [p.game_key, p]));
+        const merged = defaultProducts().map(d => (map[d.game_key] ? { ...d, ...map[d.game_key] } : d));
+        setProducts(merged);
+      } else {
+        setProducts(defaultProducts());
+      }
+
+      // --- JACKPOT ---
+      if (jRes.ok) {
+        const j = await jRes.clone().json().catch(() => null);
+        const cents = typeof j?.jackpot_cents === "number" ? j.jackpot_cents : 0;
+        setJackpot(poundsFromCents(cents));
       }
     } catch (e) {
-      setError(e.message || 'Load failed');
+      // keep placeholders visible even on error
+      setProducts(defaultProducts());
+      setError(e.message || "Load failed");
     }
   }
 
-  async function saveProduct(p) {
-    setError('');
-    try {
-      const body = {
-        id: p.id ?? null,
-        game_key: p.game_key,
-        name: String(p.name || ''),
-        price_cents: Math.round(Number(p.price || '0') * 100),
-        active: !!p.active,
-      };
-      const res = await fetch('/api/admin/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} · ${(await res.text()) || 'Save failed'}`);
-      await fetchAdminData();
-    } catch (e) {
-      setError(e.message || 'Save failed');
-    }
-  }
-
-  async function saveJackpot() {
-    setError('');
-    try {
-      const cents = Math.round(Number(jackpot || '0') * 100);
-      const res = await fetch('/api/admin/jackpot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ jackpot_cents: cents }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} · ${(await res.text()) || 'Save failed'}`);
-    } catch (e) {
-      setError(e.message || 'Save failed');
-    }
-  }
-
-  function updateLocal(idx, patch) {
-    setProducts((prev) => {
+  function updateProduct(idx, key, value) {
+    setProducts(prev => {
       const next = [...prev];
-      next[idx] = { ...next[idx], ...patch };
+      next[idx] = { ...next[idx], [key]: value };
       return next;
     });
+  }
+
+  async function saveProduct(idx) {
+    try {
+      setBusy(true);
+      setError("");
+      const p = products[idx];
+
+      const cents = centsFromPounds(poundsFromCents(p.price_cents));
+      if (cents === null) {
+        setError("Enter a valid ticket price (e.g. 2 or 2.50).");
+        return;
+      }
+
+      const res = await fetch("/api/admin/products", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          id: p.id ?? undefined,
+          game_key: p.game_key,
+          name: p.name,
+          price_cents: cents,
+          // some backends validate a string pattern — mirror it
+          price: String(cents),
+          active: !!p.active,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const saved = await res.clone().json().catch(() => ({}));
+      const merged = saved?.product ?? saved ?? {};
+      setProducts(prev => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...merged };
+        if (merged.price_cents == null) next[idx].price_cents = cents; // keep local change if server omitted it
+        return next;
+      });
+    } catch (e) {
+      setError(e.message || "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveJackpot(e) {
+    e.preventDefault();
+    try {
+      setBusy(true);
+      setError("");
+
+      const cents = centsFromPounds(jackpot);
+      if (cents === null) {
+        setError("Enter a valid jackpot (e.g. 100 or 2.50).");
+        return;
+      }
+
+      const res = await fetch("/api/admin/jackpot", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        // send numeric and string to satisfy strict validators
+        body: JSON.stringify({ jackpot_cents: cents, jackpot: String(cents) }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await res.clone().json().catch(() => null);
+      setJackpot(poundsFromCents(cents));
+    } catch (e) {
+      setError(e.message || "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runDiagnostics() {
+    try {
+      setBusy(true);
+      setError("");
+      const res = await fetch("/api/admin/debug", {
+        credentials: "include",
+        headers: { ...authHeaders() },
+      });
+      let out = `HTTP ${res.status}`;
+      const asJson = await res.clone().json().catch(() => null);
+      if (asJson) out += `\n${JSON.stringify(asJson, null, 2)}`;
+      else out += `\n${await res.text()}`;
+      setDiag(out);
+    } catch (e) {
+      setError(e.message || "Diagnostics failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -110,30 +189,40 @@ export default function Admin() {
         {error && <div className="alert">{error}</div>}
 
         <div className="row">
-          <button className="btn ghost" onClick={() => navigate('/dashboard')}>Back to Dashboard</button>
-          <button className="btn" onClick={fetchAdminData}>Run diagnostics</button>
+          <button className="btn ghost" onClick={() => navigate("/dashboard")}>
+            Back to Dashboard
+          </button>
+          <button className="btn" onClick={runDiagnostics} disabled={busy}>
+            Run diagnostics
+          </button>
         </div>
 
         {/* Products */}
         {products.map((p, i) => (
           <section key={p.game_key} className="card">
-            <h2>{p.game_key === 'crack_safe' ? 'Crack the Safe' : "What's in the Box"}</h2>
+            <h2>{p.game_key === "crack_safe" ? "Crack the Safe" : "What’s in the Box"}</h2>
 
             <label className="field">
               <span>Product name</span>
               <input
-                value={p.name}
-                onChange={(e) => updateLocal(i, { name: e.target.value })}
-                placeholder="Ticket name"
+                value={p.name ?? ""}
+                onChange={(e) => updateProduct(i, "name", e.target.value)}
+                placeholder="£1 Standard Entry"
               />
             </label>
 
             <label className="field">
               <span>Ticket price (£)</span>
               <input
+                type="number"
                 inputMode="decimal"
-                value={p.price}
-                onChange={(e) => updateLocal(i, { price: e.target.value })}
+                step="0.01"
+                min="0"
+                value={poundsFromCents(p.price_cents)}
+                onChange={(e) => {
+                  const cents = centsFromPounds(e.target.value);
+                  updateProduct(i, "price_cents", cents === null ? 0 : cents);
+                }}
                 placeholder="1.00"
               />
             </label>
@@ -141,32 +230,46 @@ export default function Admin() {
             <label className="field">
               <span>Active</span>
               <select
-                value={p.active ? 'yes' : 'no'}
-                onChange={(e) => updateLocal(i, { active: e.target.value === 'yes' })}
+                value={p.active ? "yes" : "no"}
+                onChange={(e) => updateProduct(i, "active", e.target.value === "yes")}
               >
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
               </select>
             </label>
 
-            <button className="btn" onClick={() => saveProduct(p)}>Save</button>
+            <button className="btn" onClick={() => saveProduct(i)} disabled={busy}>
+              Save
+            </button>
           </section>
         ))}
 
         {/* Jackpot */}
         <section className="card">
           <h2>Jackpot</h2>
-          <label className="field">
-            <span>Jackpot (£)</span>
-            <input
-              inputMode="decimal"
-              value={jackpot}
-              onChange={(e) => setJackpot(e.target.value)}
-              placeholder="0.00"
-            />
-          </label>
-          <button className="btn" onClick={saveJackpot}>Save jackpot</button>
+          <form onSubmit={saveJackpot}>
+            <label className="field">
+              <span>Jackpot (£)</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={jackpot}
+                onChange={(e) => setJackpot(e.target.value)}
+                placeholder="0.00"
+              />
+            </label>
+            <button className="btn" disabled={busy}>Save jackpot</button>
+          </form>
         </section>
+
+        {diag && (
+          <section className="card">
+            <h2>Diagnostics</h2>
+            <pre style={{ whiteSpace: "pre-wrap" }}>{diag}</pre>
+          </section>
+        )}
       </div>
     </div>
   );

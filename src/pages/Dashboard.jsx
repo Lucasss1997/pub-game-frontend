@@ -1,113 +1,81 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { clearToken } from '../lib/auth';
+import GlassCard from '../components/GlassCard';
+import NeonButton from '../components/NeonButton';
 
-export default function Dashboard() {
-  const [pub, setPub] = useState(null);
-  const [err, setErr] = useState('');
-  const [stats, setStats] = useState(null);
+export default function Dashboard(){
+  const [pub,setPub] = useState(null);
+  const [games,setGames] = useState([]);
+  const [err,setErr] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const d = await api.get('/api/dashboard');
-        setPub(d?.pubs?.[0] || null);
-      } catch (e) { setErr(e.message || 'Failed to load pub'); }
-    })();
-  }, []);
+  useEffect(()=>{ (async()=>{
+    try{
+      const d = await api.get('/api/dashboard');
+      setPub(d?.pubs?.[0]||null);
+      // Optional: recent games if you expose it
+      // const g = await api.get('/api/games/recent'); setGames(g?.list||[]);
+    }catch(e){ setErr(e.message||'Load failed'); }
+  })(); },[]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await api.get('/api/stats'); // optional if you have it
-        setStats(s);
-      } catch {}
-    })();
-  }, []);
-
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const origin = typeof window!=='undefined'?window.location.origin:'';
   const crackURL = pub ? `${origin}/enter/${pub.id}/crack_the_safe` : '';
   const boxURL   = pub ? `${origin}/enter/${pub.id}/whats_in_the_box` : '';
 
+  const qr = (u)=>`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(u)}`;
+
   return (
-    <div style={styles.app}>
-      <main style={styles.main}>
-        <header style={{display:'flex', alignItems:'center', gap:10}}>
-          <h1 style={{margin:0}}>Pub Dashboard</h1>
-          <div style={{marginLeft:'auto'}}>
-            <button onClick={()=>{ clearToken(); window.location.href='/login'; }} style={styles.smallBtn}>Logout</button>
+    <div className="neon-wrap">
+      <div className="neon-grid">
+        <GlassCard tone="dashboard" title="DASHBOARD">
+          <NeonButton onClick={()=>location.assign('/pricing')}>Start New Game</NeonButton>
+          {err && <div className="bad" style={{marginTop:8}}>{err}</div>}
+          <h3 style={{margin:'14px 0 6px'}}>Past Games</h3>
+          <div className="tr" style={{display:'grid',gridTemplateColumns:'90px 1fr 80px',gap:8,fontWeight:700}}>
+            <div>Date</div><div>Game</div><div>Prize</div>
           </div>
-        </header>
+          {(games||[]).map((g,i)=>(
+            <div key={i} className="tr" style={{display:'grid',gridTemplateColumns:'90px 1fr 80px',gap:8}}>
+              <div>{new Date(g.created_at).toLocaleDateString()}</div>
+              <div>{g.name}</div>
+              <div>£{(g.prize_cents/100).toFixed(0)}</div>
+            </div>
+          ))}
+        </GlassCard>
 
-        {err && <div style={styles.bad}>{err}</div>}
-        {!pub && !err && <p>Loading…</p>}
+        <GlassCard tone="newgame" title="NEW GAME">
+          <div className="field">
+            <span>Game Type</span>
+            <select className="select" defaultValue="crack_the_safe">
+              <option value="crack_the_safe">Crack the Safe</option>
+              <option value="whats_in_the_box">What’s in the Box</option>
+            </select>
+          </div>
+          <div className="field">
+            <span>Prize Amount (£)</span>
+            <input className="input" type="number" min="0" step="1" defaultValue="100"/>
+          </div>
+          <NeonButton onClick={()=>location.assign('/raffle')}>Start Game</NeonButton>
+        </GlassCard>
 
-        {pub && (
-          <>
-            <section style={styles.card}>
-              <div style={{display:'flex', alignItems:'center', gap:8}}>
-                <strong style={{fontSize:18}}>{pub.name}</strong>
-                <span title={pub.active ? 'Active':'Inactive'} style={{width:10,height:10,borderRadius:'50%',background:pub.active?'limegreen':'gray'}}/>
-                <span style={{marginLeft:'auto', color:'#94a3b8'}}>
-                  {pub.city} • {pub.address}
-                </span>
+        <GlassCard tone="game" title="CRACK THE SAFE" subtitle={pub?`Live • ${pub.name}`:'Live'}>
+          {pub ? (
+            <div style={{display:'grid',gap:12}}>
+              <div style={{display:'grid',gap:10,gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))'}}>
+                <div className="card" style={{background:'rgba(0,0,0,.12)'}}>
+                  <h3 style={{marginTop:0}}>Player QR</h3>
+                  <img alt="Crack QR" width="220" height="220" src={qr(crackURL)} style={{borderRadius:12}}/>
+                  <small>{crackURL}</small>
+                </div>
+                <div className="card" style={{background:'rgba(0,0,0,.12)'}}>
+                  <h3 style={{marginTop:0}}>Box QR</h3>
+                  <img alt="Box QR" width="220" height="220" src={qr(boxURL)} style={{borderRadius:12}}/>
+                  <small>{boxURL}</small>
+                </div>
               </div>
-              {pub.expires_at && (
-                <div style={{color:'#94a3b8'}}>Subscription expires: {new Date(pub.expires_at).toLocaleDateString()}</div>
-              )}
-            </section>
-
-            <section style={styles.card}>
-              <h2 style={{marginTop:0}}>QR codes for entry</h2>
-              <div style={styles.grid}>
-                <GameQR title="Crack the Safe" url={crackURL} />
-                <GameQR title="What’s in the Box" url={boxURL} />
-              </div>
-              <p style={{color:'#94a3b8', marginTop:10}}>Players scan → pay entry (Stripe, £GBP) → added to live raffle.</p>
-            </section>
-
-            <section style={styles.card}>
-              <h2 style={{marginTop:0}}>Stats</h2>
-              <div style={styles.statsRow}>
-                <Stat label="Players (7d)" value={stats?.players7d ?? '—'} />
-                <Stat label="Entries (today)" value={stats?.entriesToday ?? '—'} />
-                <Stat label="Prizes awarded" value={stats?.prizes ?? '—'} />
-              </div>
-            </section>
-          </>
-        )}
-      </main>
+            </div>
+          ) : <div>Loading…</div>}
+        </GlassCard>
+      </div>
     </div>
   );
 }
-
-function GameQR({ title, url }) {
-  if (!url) return null;
-  const img = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
-  return (
-    <div style={{background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:16}}>
-      <h3 style={{marginTop:0}}>{title}</h3>
-      <img src={img} alt={`QR for ${title}`} width="220" height="220" style={{borderRadius:12}} />
-      <div style={{marginTop:8, fontSize:12, color:'#94a3b8', wordBreak:'break-all'}}>{url}</div>
-    </div>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div style={{display:'grid', gap:6}}>
-      <div style={{fontSize:28, fontWeight:800}}>{value}</div>
-      <div style={{color:'#94a3b8'}}>{label}</div>
-    </div>
-  );
-}
-
-const styles = {
-  app:{ minHeight:'100vh', background:'#0f172a', color:'#e5e7eb' },
-  main:{ maxWidth:1100, margin:'0 auto', padding:20, display:'grid', gap:16 },
-  card:{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:16 },
-  grid:{ display:'grid', gap:16, gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))' },
-  statsRow:{ display:'grid', gap:16, gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))' },
-  smallBtn:{ padding:'6px 10px', border:'none', borderRadius:8, background:'#334155', color:'#e5e7eb', cursor:'pointer' },
-  bad:{ background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.35)', color:'#fecaca', padding:8, borderRadius:10 }
-};

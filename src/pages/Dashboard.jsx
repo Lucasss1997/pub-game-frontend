@@ -1,39 +1,32 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { api } from '../lib/api';
+import '../ui/pubgame-theme.css';
 
-export default function Dashboard(){
-  // TODO: wire to real pub data if you want; for now static shell
+export default function Dashboard() {
+  const [games, setGames] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api('/api/games')
+      .then(setGames)
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="loading">Loading...</p>;
+
   return (
-    <div className="pg-wrap">
-      <div className="pg-wide pg-stack">
-        <div className="pg-card">
-          <h1 className="pg-title">DASHBOARD</h1>
-          <p className="pg-sub">Quick actions for tonight’s games.</p>
-
-          <div className="pg-row">
-            <Link className="pg-btn" to="/admin">Admin (Prices & Jackpot)</Link>
-            <Link className="pg-btn ghost" to="/raffle">Run Raffle</Link>
-            <Link className="pg-btn ghost" to="/billing">Billing</Link>
+    <div className="neon-wrap">
+      <h2>Dashboard</h2>
+      <div className="game-list">
+        {games.map(g => (
+          <div key={g.id} className="card">
+            <h3>{g.name}</h3>
+            <p>Ticket Price: £{(g.price_cents / 100).toFixed(2)}</p>
+            <p>Jackpot: £{(g.jackpot_cents / 100).toFixed(2)}</p>
+            <a className="btn" href={`/enter/${g.pub_id}/${g.game_key}`}>Get QR Code</a>
           </div>
-        </div>
-
-        <div className="pg-row">
-          <section className="pg-card" style={{flex:1}}>
-            <h2 className="pg-title" style={{fontSize:28}}>Crack the Safe</h2>
-            <p className="pg-sub">Guess the 3‑digit code to win!</p>
-            <div className="pg-row">
-              <Link className="pg-btn" to="/crack-the-safe">Play</Link>
-            </div>
-          </section>
-
-          <section className="pg-card" style={{flex:1}}>
-            <h2 className="pg-title" style={{fontSize:28}}>What’s in the Box</h2>
-            <p className="pg-sub">Pick the winning box!</p>
-            <div className="pg-row">
-              <Link className="pg-btn" to="/whats-in-the-box">Play</Link>
-            </div>
-          </section>
-        </div>
+        ))}
       </div>
     </div>
   );

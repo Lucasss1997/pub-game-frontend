@@ -1,4 +1,4 @@
-import './ui/pubgame-theme.css';
+import './ui/pubgame-solid.css';
 import './ui/neon.css';
 import React from "react";
 import { createRoot } from "react-dom/client";

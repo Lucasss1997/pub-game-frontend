@@ -1,39 +1,47 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { api } from '../lib/api';
-import GlassCard from '../components/GlassCard';
-import NeonButton from '../components/NeonButton';
 
 export default function CrackTheSafe(){
-  const [guess,setGuess] = useState('');
-  const [status,setStatus] = useState('');
-  const [err,setErr] = useState('');
-  const audioRef = useRef(null);
+  const [guess,setGuess]=useState('');
+  const [msg,setMsg]=useState('');
+  const [err,setErr]=useState('');
+  const [busy,setBusy]=useState(false);
 
-  useEffect(()=>{ audioRef.current?.play().catch(()=>{}); },[]);
-
-  async function onSubmit(e){
-    e.preventDefault(); setErr(''); setStatus('Checking…');
+  async function submit(e){
+    e.preventDefault(); setMsg(''); setErr('');
     try{
-      const r = await api.post('/api/games/crack-the-safe/guess',{ guess });
-      if(r.result==='correct') setStatus('🎉 Correct! You cracked the safe!');
-      else if(r.result==='incorrect') setStatus('Nope! Try again.');
-      else setStatus(JSON.stringify(r));
+      setBusy(true);
+      const d = await api.post('/api/games/crack/guess',{ guess });
+      // server returns { result: 'correct' | 'wrong' }
+      if(d?.result==='correct') setMsg('✅ Correct! Winner!');
+      else setMsg('❌ Wrong code. Try again!');
+      setGuess('');
     }catch(ex){ setErr(ex.message||'Error'); }
+    finally{ setBusy(false); }
   }
 
   return (
-    <div className="neon-wrap">
-      <div className="neon-grid" style={{maxWidth:680}}>
-        <GlassCard tone="game" title="CRACK THE SAFE" subtitle="Live">
-          <audio ref={audioRef} src="/audio/crack-safe-intro-enGB-announcer-v1.mp3" preload="none"/>
-          {status && <div className="info">{status}</div>}
-          {err && <div className="bad">{err}</div>}
-          <form onSubmit={onSubmit} style={{display:'grid',gap:10}}>
-            <input className="input" inputMode="numeric" maxLength={3} placeholder="000–999"
-                   value={guess} onChange={(e)=>setGuess(e.target.value)} />
-            <NeonButton type="submit">Submit Guess</NeonButton>
+    <div className="pg-wrap">
+      <div className="pg-narrow pg-stack">
+        <div className="pg-card">
+          <h1 className="pg-title">CRACK THE SAFE</h1>
+          <p className="pg-sub">Enter a 3‑digit code</p>
+
+          {err && <div className="pg-bad">{err}</div>}
+          {msg && <div className="pg-good">{msg}</div>}
+
+          <form onSubmit={submit} className="pg-stack">
+            <input className="pg-input" inputMode="numeric" pattern="[0-9]*" maxLength={3}
+              value={guess} onChange={e=>setGuess(e.target.value.replace(/\D/g,''))} placeholder="000–999" />
+            <button className="pg-btn" disabled={busy || guess.length!==3}>
+              {busy ? 'Checking…' : 'Submit Guess'}
+            </button>
           </form>
-        </GlassCard>
+
+          <div className="pg-row" style={{marginTop:10}}>
+            <a className="pg-btn ghost" href="/dashboard">Back</a>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,137 +1,112 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "../styles/admin.css";
+import "./admin.css";
 
-function Admin() {
-  const navigate = useNavigate();
+export default function Admin() {
   const [products, setProducts] = useState([]);
   const [jackpot, setJackpot] = useState("");
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
-    fetchProducts();
-    fetchJackpot();
+    fetchAdminData();
   }, []);
 
-  const fetchProducts = async () => {
+  const fetchAdminData = async () => {
     try {
       const res = await fetch("/api/admin/products", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+        credentials: "include",
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status} · ${await res.text()}`);
+
       const data = await res.json();
-      setProducts(data);
-    } catch (err) {
-      setError("Failed to load products");
-    }
-  };
 
-  const fetchJackpot = async () => {
-    try {
-      const res = await fetch("/api/admin/jackpot", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+      // Ensure products is always an array
+      const safeProducts = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
+      setProducts(safeProducts);
+
+      // Jackpot fetch
+      const jackpotRes = await fetch("/api/admin/jackpot", {
+        credentials: "include",
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setJackpot((data.jackpot_cents / 100).toFixed(2));
+      if (!jackpotRes.ok) throw new Error(`HTTP ${jackpotRes.status} · ${await jackpotRes.text()}`);
+
+      const jackpotData = await jackpotRes.json();
+      setJackpot((jackpotData.jackpot_cents ?? 0) / 100);
     } catch (err) {
-      setError("Failed to load jackpot");
+      console.error(err);
+      setError(err.message);
     }
   };
 
-  const saveJackpot = async () => {
-    try {
-      const res = await fetch("/api/admin/jackpot", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ jackpot_cents: Math.round(parseFloat(jackpot) * 100) })
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("Jackpot saved successfully");
-    } catch (err) {
-      setError("Failed to save jackpot");
-    }
-  };
-
-  const saveProduct = async (index, updatedProduct) => {
+  const handleSaveProduct = async (gameKey, updates) => {
     try {
       const res = await fetch("/api/admin/products", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(updatedProduct)
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ game_key: gameKey, ...updates }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("Product updated successfully");
+      if (!res.ok) throw new Error(`HTTP ${res.status} · ${await res.text()}`);
+      fetchAdminData();
     } catch (err) {
-      setError("Failed to save product");
+      setError(err.message);
+    }
+  };
+
+  const handleSaveJackpot = async () => {
+    try {
+      const res = await fetch("/api/admin/jackpot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ jackpot_cents: Math.round(parseFloat(jackpot) * 100) }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} · ${await res.text()}`);
+      fetchAdminData();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
   return (
-    <div className="admin-page">
+    <div className="admin-container">
       <h1>ADMIN</h1>
       <p>Set ticket prices, toggle availability, and manage the jackpot.</p>
 
       {error && <div className="error">{error}</div>}
 
-      <button onClick={() => navigate("/dashboard")} className="btn-back">
-        Back to Dashboard
-      </button>
+      <button onClick={() => navigate("/dashboard")}>BACK TO DASHBOARD</button>
 
-      <div className="jackpot-section">
-        <h2>Jackpot</h2>
-        <label>Jackpot (£)</label>
-        <input
-          type="number"
-          value={jackpot}
-          onChange={(e) => setJackpot(e.target.value)}
-        />
-        <button onClick={saveJackpot}>Save Jackpot</button>
-      </div>
-
-      <div className="products-section">
-        {products.map((product, index) => (
-          <div key={index} className="product-card">
-            <h3>{product.slug}</h3>
-            <label>Product name</label>
-            <input
-              type="text"
-              value={product.name}
-              onChange={(e) =>
-                setProducts(
-                  products.map((p, i) =>
-                    i === index ? { ...p, name: e.target.value } : p
-                  )
-                )
-              }
-            />
-            <label>Ticket price (£)</label>
+      {products.map((product) => (
+        <div key={product.game_key} className="product-card">
+          <h2>{product.name}</h2>
+          <label>
+            Ticket price (£)
             <input
               type="number"
-              value={(product.price_cents / 100).toFixed(2)}
+              step="0.01"
+              value={product.price || ""}
               onChange={(e) =>
-                setProducts(
-                  products.map((p, i) =>
-                    i === index
-                      ? { ...p, price_cents: Math.round(parseFloat(e.target.value) * 100) }
+                setProducts((prev) =>
+                  prev.map((p) =>
+                    p.game_key === product.game_key
+                      ? { ...p, price: e.target.value }
                       : p
                   )
                 )
               }
             />
-            <label>Active</label>
+          </label>
+          <label>
+            Active
             <select
               value={product.active ? "Yes" : "No"}
               onChange={(e) =>
-                setProducts(
-                  products.map((p, i) =>
-                    i === index
+                setProducts((prev) =>
+                  prev.map((p) =>
+                    p.game_key === product.game_key
                       ? { ...p, active: e.target.value === "Yes" }
                       : p
                   )
@@ -141,14 +116,33 @@ function Admin() {
               <option>Yes</option>
               <option>No</option>
             </select>
-            <button onClick={() => saveProduct(index, products[index])}>
-              Save
-            </button>
-          </div>
-        ))}
+          </label>
+          <button
+            onClick={() =>
+              handleSaveProduct(product.game_key, {
+                price_cents: Math.round(parseFloat(product.price) * 100),
+                active: product.active,
+              })
+            }
+          >
+            SAVE
+          </button>
+        </div>
+      ))}
+
+      <div className="jackpot-section">
+        <h2>Jackpot</h2>
+        <label>
+          Jackpot (£)
+          <input
+            type="number"
+            step="0.01"
+            value={jackpot}
+            onChange={(e) => setJackpot(e.target.value)}
+          />
+        </label>
+        <button onClick={handleSaveJackpot}>SAVE JACKPOT</button>
       </div>
     </div>
   );
 }
-
-export default Admin;

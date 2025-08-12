@@ -2,131 +2,125 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./admin.css";
 
-/** ---- tiny helpers ---- */
+// ---------- helpers ----------
 const poundsFromCents = (cents) =>
   typeof cents === "number" && !Number.isNaN(cents)
     ? (cents / 100).toFixed(2)
     : "0.00";
 
-const centsFromPounds = (str) => {
-  const val = (str ?? "").toString().trim();
-  // accepts 12, 12.3, 12.34
-  if (!/^\d+(\.\d{1,2})?$/.test(val)) return null;
-  return Math.round(parseFloat(val) * 100);
+const centsFromPounds = (val) => {
+  const s = (val ?? "").toString().trim();
+  // allow 12, 12.3, 12.34
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  return Math.round(parseFloat(s) * 100);
 };
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
+const authHeaders = () => {
+  const t = localStorage.getItem("token");
+  return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
-/** ---- component ---- */
+// Create the two product placeholders so UI is NEVER empty
+const defaultProducts = () => ([
+  { id: null, game_key: "crack_safe",       name: "£1 Standard Entry", price_cents: 0, active: true },
+  { id: null, game_key: "whats_in_the_box", name: "£1 Standard Entry", price_cents: 0, active: true },
+]);
+
+// ---------- component ----------
 export default function Admin() {
   const navigate = useNavigate();
 
-  // products: array of { id|null, game_key, name, price_cents, active }
-  const [products, setProducts] = useState([]);
-  const [jackpot, setJackpot] = useState("0.00"); // pounds string
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [diag, setDiag] = useState("");
+  const [products, setProducts] = useState(defaultProducts());
+  const [jackpot, setJackpot]   = useState("0.00");
+  const [busy, setBusy]         = useState(false);
+  const [error, setError]       = useState("");
+  const [diag, setDiag]         = useState("");
 
   useEffect(() => {
-    fetchAdminData();
+    loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function fetchAdminData() {
+  async function loadAll() {
     try {
       setError("");
       setDiag("");
       const [pRes, jRes] = await Promise.all([
-        fetch("/api/admin/products", {
-          credentials: "include",
-          headers: { ...getAuthHeaders() },
-        }),
-        fetch("/api/admin/jackpot", {
-          credentials: "include",
-          headers: { ...getAuthHeaders() },
-        }),
+        fetch("/api/admin/products", { credentials: "include", headers: { ...authHeaders() } }),
+        fetch("/api/admin/jackpot",  { credentials: "include", headers: { ...authHeaders() } }),
       ]);
 
-      if (!pRes.ok) throw new Error(`Products HTTP ${pRes.status}`);
-      if (!jRes.ok) throw new Error(`Jackpot HTTP ${jRes.status}`);
+      // If either fails, still show the two cards
+      if (pRes.ok) {
+        const pJson = await pRes.json();
+        const list = Array.isArray(pJson)
+          ? pJson
+          : Array.isArray(pJson?.products)
+          ? pJson.products
+          : [];
+        // Map the list into our two known keys; keep placeholders if missing
+        const map = Object.fromEntries(list.filter(Boolean).map(p => [p.game_key, p]));
+        const merged = defaultProducts().map(d => map[d.game_key] ? { ...d, ...map[d.game_key] } : d);
+        setProducts(merged);
+      } else {
+        setProducts(defaultProducts());
+      }
 
-      const pData = await pRes.json();
-      const jData = await jRes.json();
-
-      // normalise to array
-      const list = Array.isArray(pData)
-        ? pData
-        : Array.isArray(pData?.products)
-        ? pData.products
-        : [];
-
-      const byKey = {};
-      list.forEach((p) => {
-        if (p && p.game_key) byKey[p.game_key] = p;
-      });
-
-      // Ensure both products exist so UI never disappears
-      const ensure = (key, name) =>
-        byKey[key] ?? {
-          id: null,
-          game_key: key,
-          name,
-          price_cents: 0,
-          active: true,
-        };
-
-      setProducts([
-        ensure("crack_safe", "£1 Standard Entry"),
-        ensure("whats_in_the_box", "£1 Standard Entry"),
-      ]);
-
-      const cents =
-        typeof jData?.jackpot_cents === "number" ? jData.jackpot_cents : 0;
-      setJackpot(poundsFromCents(cents));
+      if (jRes.ok) {
+        const j = await jRes.json();
+        setJackpot(poundsFromCents(typeof j?.jackpot_cents === "number" ? j.jackpot_cents : 0));
+      }
     } catch (e) {
+      // Still keep the placeholders visible
+      setProducts(defaultProducts());
       setError(e.message || "Load failed");
     }
   }
 
-  async function saveProduct(index) {
+  function updateProduct(idx, key, value) {
+    setProducts(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [key]: value };
+      return next;
+    });
+  }
+
+  async function saveProduct(idx) {
     try {
       setBusy(true);
       setError("");
-      const p = products[index];
+      const p = products[idx];
 
-      const price_cents = centsFromPounds(poundsFromCents(p.price_cents));
-      if (price_cents === null) {
+      const cents = centsFromPounds(poundsFromCents(p.price_cents));
+      if (cents === null) {
         setError("Enter a valid ticket price (e.g. 2 or 2.50).");
         return;
       }
 
       const res = await fetch("/api/admin/products", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
         credentials: "include",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           id: p.id ?? undefined,
           game_key: p.game_key,
           name: p.name,
-          price_cents,
+          price_cents: cents,
+          // send string mirror as well in case the backend pattern expects it
+          price: String(cents),
           active: !!p.active,
         }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const saved = await res.json();
-
-      // merge back
-      const next = [...products];
-      next[index] = saved?.product ?? saved ?? next[index];
-      setProducts(next);
+      // Accept {product: {...}} or direct object
+      const merged = saved?.product ?? saved;
+      setProducts(prev => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...merged };
+        return next;
+      });
     } catch (e) {
       setError(e.message || "Save failed");
     } finally {
@@ -146,21 +140,22 @@ export default function Admin() {
         return;
       }
 
+      // Post both numeric and string fields to satisfy strict schemas
       const res = await fetch("/api/admin/jackpot", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
         credentials: "include",
-        body: JSON.stringify({ jackpot_cents: cents }),
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          jackpot_cents: cents,
+          jackpot: String(cents),
+        }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await res.json();
-      // reflect the rounded value
       setJackpot(poundsFromCents(cents));
     } catch (e) {
+      // Show server validator messages if they come as JSON string
       setError(e.message || "Save failed");
     } finally {
       setBusy(false);
@@ -173,15 +168,14 @@ export default function Admin() {
       setError("");
       const res = await fetch("/api/admin/debug", {
         credentials: "include",
-        headers: { ...getAuthHeaders() },
+        headers: { ...authHeaders() },
       });
       let out = `HTTP ${res.status}`;
       try {
         const j = await res.json();
         out += `\n${JSON.stringify(j, null, 2)}`;
       } catch {
-        const text = await res.text();
-        out += `\n${text}`;
+        out += `\n${await res.text()}`;
       }
       setDiag(out);
     } catch (e) {
@@ -190,14 +184,6 @@ export default function Admin() {
       setBusy(false);
     }
   }
-
-  const onProductField = (idx, key, value) => {
-    setProducts((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [key]: value };
-      return next;
-    });
-  };
 
   return (
     <div className="admin-wrap">
@@ -218,12 +204,10 @@ export default function Admin() {
           </button>
         </div>
 
-        {diag && (
-          <pre className="diag">{diag}</pre>
-        )}
+        {diag && <pre className="diag">{diag}</pre>}
       </div>
 
-      {/* Products */}
+      {/* Always render both product cards */}
       {products.map((p, i) => (
         <div key={p.game_key} className="admin-card">
           <h2 className="section-title">
@@ -234,7 +218,7 @@ export default function Admin() {
             <span>Product name</span>
             <input
               value={p.name ?? ""}
-              onChange={(e) => onProductField(i, "name", e.target.value)}
+              onChange={(e) => updateProduct(i, "name", e.target.value)}
               placeholder="£1 Standard Entry"
             />
           </label>
@@ -249,7 +233,7 @@ export default function Admin() {
               value={poundsFromCents(p.price_cents)}
               onChange={(e) => {
                 const cents = centsFromPounds(e.target.value);
-                onProductField(i, "price_cents", cents === null ? 0 : cents);
+                updateProduct(i, "price_cents", cents === null ? 0 : cents);
               }}
               placeholder="1.00"
             />
@@ -259,7 +243,7 @@ export default function Admin() {
             <span>Active</span>
             <select
               value={p.active ? "yes" : "no"}
-              onChange={(e) => onProductField(i, "active", e.target.value === "yes")}
+              onChange={(e) => updateProduct(i, "active", e.target.value === "yes")}
             >
               <option value="yes">Yes</option>
               <option value="no">No</option>
@@ -272,7 +256,6 @@ export default function Admin() {
         </div>
       ))}
 
-      {/* Jackpot */}
       <div className="admin-card">
         <h2 className="section-title">Jackpot</h2>
         <form onSubmit={saveJackpot}>

@@ -1,13 +1,12 @@
+// src/pages/Admin.jsx — full drop‑in with diagnostics
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import './admin.css';
 
-// helpers
 const toPounds = (cents) =>
   (Number.isFinite(cents) ? (cents / 100).toFixed(2) : '0.00');
 
-// parse a GBP string -> integer cents (returns null if invalid)
 function parseGBP(str) {
   if (str == null) return null;
   const clean = String(str).replace(/[^0-9.]/g, '');
@@ -17,55 +16,69 @@ function parseGBP(str) {
   return Math.round(n * 100);
 }
 
-export default function Admin() {
-  const navigate = useNavigate();
+function prettyErr(e, fallback) {
+  // api.get/api.post throw { status, body, message }
+  const bits = [];
+  if (e?.status) bits.push(`HTTP ${e.status}`);
+  if (e?.body) bits.push(typeof e.body === 'string' ? e.body : JSON.stringify(e.body));
+  if (e?.message && !bits.length) bits.push(e.message);
+  return bits.join(' · ') || fallback || 'Error';
+}
 
-  const [products, setProducts] = useState([]); // each item may have _price (string) for editing
-  const [jackpot, setJackpot] = useState(0);    // cents
+export default function Admin() {
+  const nav = useNavigate();
+
+  const [products, setProducts] = useState([]);
+  const [jackpot, setJackpot] = useState(0); // cents
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [diag, setDiag] = useState(null); // shows /api/admin/debug
 
-  // Load admin data
+  // initial load
   useEffect(() => {
+    let mounted = true;
     (async () => {
-      setErr(''); setOk('');
+      setErr(''); setOk(''); setDiag(null);
       try {
-        setLoading(true);
         const p = await api.get('/api/admin/products');
-        if (p?.products) {
-          setProducts(
-            p.products.map(x => ({ ...x, _price: toPounds(x.price_cents) }))
-          );
-        }
+        if (!mounted) return;
+        const list = (p?.products || []).map(x => ({ ...x, _price: toPounds(x.price_cents) }));
+        setProducts(list);
       } catch (e) {
-        setErr(formatErr(e, 'Load products failed'));
+        if (!mounted) return;
+        setErr(prettyErr(e, 'Load products failed'));
       } finally {
+        if (!mounted) return;
         setLoading(false);
       }
     })();
+
     (async () => {
       try {
         const j = await api.get('/api/admin/jackpot');
         if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
       } catch (e) {
-        setErr(prev => prev ? prev : formatErr(e, 'Load jackpot failed'));
+        // don’t overwrite a more specific error if we already have one
+        setErr(prev => prev || prettyErr(e, 'Load jackpot failed'));
       }
     })();
+
+    return () => { mounted = false; };
   }, []);
 
-  function formatErr(e, fallback) {
-    const msg = [
-      e?.status && `status ${e.status}`,
-      e?.body && JSON.stringify(e.body),
-      e?.message,
-    ].filter(Boolean).join(' – ');
-    return msg || fallback || 'Error';
+  async function runDiagnostics() {
+    setDiag('Running…');
+    try {
+      const d = await api.get('/api/admin/debug');
+      setDiag(JSON.stringify(d, null, 2));
+    } catch (e) {
+      setDiag(prettyErr(e, 'Debug failed'));
+    }
   }
 
   async function saveProduct(prod) {
     setErr(''); setOk('');
-    // prefer edited string _price; fallback to current cents
     const cents = prod._price != null ? parseGBP(prod._price) : prod.price_cents;
     if (!Number.isFinite(cents)) {
       setErr('Enter a valid ticket price, e.g. 2.00');
@@ -79,7 +92,6 @@ export default function Admin() {
         active: !!prod.active,
       });
       setOk('Saved');
-      // reflect confirmed value
       setProducts(curr =>
         curr.map(p => p.game_key === prod.game_key
           ? { ...p, price_cents: cents, _price: toPounds(cents) }
@@ -87,13 +99,14 @@ export default function Admin() {
         )
       );
     } catch (e) {
-      setErr(formatErr(e, 'Save failed'));
+      setErr(prettyErr(e, 'Save failed'));
     }
   }
 
   async function saveJackpot() {
     setErr(''); setOk('');
-    const cents = parseGBP((jackpot / 100).toFixed(2));
+    const asString = (jackpot / 100).toFixed(2);
+    const cents = parseGBP(asString);
     if (!Number.isFinite(cents)) {
       setErr('Enter a valid jackpot amount, e.g. 100.00');
       return;
@@ -103,7 +116,7 @@ export default function Admin() {
       setJackpot(cents);
       setOk('Jackpot saved');
     } catch (e) {
-      setErr(formatErr(e, 'Jackpot save failed'));
+      setErr(prettyErr(e, 'Jackpot save failed'));
     }
   }
 
@@ -114,20 +127,27 @@ export default function Admin() {
         <p>Set ticket prices, toggle availability, and manage the jackpot.</p>
         {!!err && <div className="error">{err}</div>}
         {!!ok && <div className="ok">{ok}</div>}
-        <button onClick={() => navigate('/dashboard')} className="btn back-btn">
-          Back to Dashboard
-        </button>
+        <div style={{display:'flex', gap:12, flexWrap:'wrap'}}>
+          <button className="btn back-btn" onClick={() => nav('/dashboard')}>Back to Dashboard</button>
+          <button className="btn ghost" onClick={runDiagnostics}>Run diagnostics</button>
+        </div>
+        {diag && (
+          <pre style={{
+            marginTop:12, background:'rgba(0,0,0,0.15)', padding:12, borderRadius:12,
+            overflow:'auto', maxHeight:200
+          }}>{diag}</pre>
+        )}
       </section>
 
-      {loading && <div>Loading…</div>}
+      {loading && <div className="card"><p>Loading…</p></div>}
 
       {!loading && products.map((prod) => (
         <section key={prod.game_key} className="card product-card">
-          <h2>{prod.game_key === 'crack'
-                ? 'Crack the Safe'
-                : prod.game_key === 'box'
-                ? 'What’s in the Box'
-                : prod.game_key}</h2>
+          <h2>
+            {prod.game_key === 'crack' ? 'Crack the Safe'
+              : prod.game_key === 'box' ? 'What’s in the Box'
+              : prod.game_key}
+          </h2>
 
           <label>Product name</label>
           <input
@@ -182,9 +202,7 @@ export default function Admin() {
             <option>No</option>
           </select>
 
-          <button className="btn save-btn" onClick={() => saveProduct(prod)}>
-            Save
-          </button>
+          <button className="btn save-btn" onClick={() => saveProduct(prod)}>Save</button>
         </section>
       ))}
 
@@ -197,7 +215,7 @@ export default function Admin() {
           value={toPounds(jackpot)}
           onChange={(e) => {
             const cents = parseGBP(e.target.value);
-            setJackpot(Number.isFinite(cents) ? cents : jackpot);
+            if (Number.isFinite(cents)) setJackpot(cents);
           }}
         />
         <button className="btn save-btn" onClick={saveJackpot}>Save Jackpot</button>

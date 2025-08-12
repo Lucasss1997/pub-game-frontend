@@ -1,53 +1,84 @@
 import React, { useEffect, useState } from 'react';
-import { connectLive } from '../lib/live';
 import { api } from '../lib/api';
+import '../ui/pubgame-theme.css'; // keep your theme
 
-export default function CrackSafePublic() {
-  const [pubId, setPubId] = useState(null);
-  const [ticketPrice, setTicketPrice] = useState(200); // cents default £2.00
-  const [jackpot, setJackpot] = useState(0);          // cents
+export default function CrackTheSafe() {
+  const [price, setPrice] = useState(0);
+  const [jackpot, setJackpot] = useState(0);
+  const [guess, setGuess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
 
-  // load initial pubId + prices/jackpot (you likely have pubId from QR params)
   useEffect(() => {
+    // load ticket price & jackpot for this pub/game
     (async () => {
       try {
-        const dash = await api.get('/api/dashboard'); // uses token if set; otherwise pass pub via QR param in your own endpoint
-        const id = dash?.pubs?.[0]?.id || 1;
-        setPubId(id);
-
-        // load current price for crack_safe
-        const p = await api.get('/api/admin/products'); // if auth needed for admin, swap to a public products endpoint in future
-        const list = Array.isArray(p?.products) ? p.products : [];
-        const crack = list.find(x => x.game_key === 'crack_safe');
-        if (crack) setTicketPrice(crack.price_cents);
-
-        const j = await api.get('/api/admin/jackpot');
-        if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
-      } catch { /* ignore on public */ }
+        const meta = await api.get('/api/public/game-meta?game_key=crack_safe');
+        // meta: { price_cents, jackpot_cents }
+        setPrice((meta?.price_cents ?? 0) / 100);
+        setJackpot((meta?.jackpot_cents ?? 0) / 100);
+      } catch (e) {
+        // still show the UI even if meta fails
+      }
     })();
   }, []);
 
-  // live updates
-  useEffect(() => {
-    if (!pubId) return;
-    const es = connectLive(pubId, {
-      onProducts: (p) => {
-        if (p?.game_key === 'crack_safe' && typeof p.price_cents === 'number') {
-          setTicketPrice(p.price_cents);
-        }
-      },
-      onJackpot: (j) => {
-        if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
-      },
-    });
-    return () => es.close && es.close();
-  }, [pubId]);
+  const submitGuess = async (e) => {
+    e.preventDefault();
+    setErr('');
+    setMsg('');
+    if (!/^\d{3}$/.test(guess)) {
+      setErr('Enter a 3‑digit code (000–999).');
+      return;
+    }
+    try {
+      setLoading(true);
+      // Adjust this endpoint to your backend if needed:
+      // expected response: { result: 'correct' | 'incorrect' }
+      const res = await api.post('/api/games/crack', { guess });
+      if (res?.result === 'correct') setMsg('🎉 Correct! Call the player up!');
+      else setMsg('❌ Not quite. Try again!');
+    } catch (e2) {
+      setErr(e2.message || 'Could not check code.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div style={{ padding: 20, color: '#fff' }}>
-      <h1>Crack the Safe</h1>
-      <p>Ticket: £{(ticketPrice/100).toFixed(2)} · Jackpot: £{(jackpot/100).toFixed(2)}</p>
-      {/* ...rest of your game UI... */}
+    <div className="pg-wrap">
+      <header className="pg-header">
+        <h1 className="pg-title">Crack the Safe</h1>
+        <div className="pg-sub">
+          Ticket: £{price.toFixed(2)} · Jackpot: £{jackpot.toFixed(2)}
+        </div>
+      </header>
+
+      <main className="pg-main">
+        <form className="pg-card" onSubmit={submitGuess}>
+          <label className="pg-label">Enter 3‑digit code</label>
+          <input
+            className="pg-input"
+            inputMode="numeric"
+            pattern="\d{3}"
+            maxLength={3}
+            placeholder="000"
+            value={guess}
+            onChange={(e) => setGuess(e.target.value.replace(/\D/g, '').slice(0, 3))}
+            autoFocus
+          />
+
+          <button className="pg-btn" type="submit" disabled={loading}>
+            {loading ? 'Checking…' : 'Submit Guess'}
+          </button>
+
+          {msg && <div className="pg-info">{msg}</div>}
+          {err && <div className="pg-error">{err}</div>}
+        </form>
+
+        <p className="pg-footnote">No hints shown. The code is exactly three digits.</p>
+      </main>
     </div>
   );
 }

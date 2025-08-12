@@ -4,3 +4,4 @@ import { isLoggedIn } from '../lib/auth';
 
 export default function PrivateRoute() {
   return isLoggedIn() ? <Outlet /> : <Navigate to="/login" replace />;
+}

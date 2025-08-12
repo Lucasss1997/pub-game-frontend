@@ -1,81 +1,109 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../lib/api';
-import GlassCard from '../components/GlassCard';
-import NeonButton from '../components/NeonButton';
+import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import TopNav from '../components/TopNav';
 
-export default function Dashboard(){
-  const [pub,setPub] = useState(null);
-  const [games,setGames] = useState([]);
-  const [err,setErr] = useState('');
-
-  useEffect(()=>{ (async()=>{
-    try{
-      const d = await api.get('/api/dashboard');
-      setPub(d?.pubs?.[0]||null);
-      // Optional: recent games if you expose it
-      // const g = await api.get('/api/games/recent'); setGames(g?.list||[]);
-    }catch(e){ setErr(e.message||'Load failed'); }
-  })(); },[]);
-
-  const origin = typeof window!=='undefined'?window.location.origin:'';
-  const crackURL = pub ? `${origin}/enter/${pub.id}/crack_the_safe` : '';
-  const boxURL   = pub ? `${origin}/enter/${pub.id}/whats_in_the_box` : '';
-
-  const qr = (u)=>`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(u)}`;
+export default function Dashboard() {
+  const location = useLocation();
 
   return (
-    <div className="neon-wrap">
-      <div className="neon-grid">
-        <GlassCard tone="dashboard" title="DASHBOARD">
-          <NeonButton onClick={()=>location.assign('/pricing')}>Start New Game</NeonButton>
-          {err && <div className="bad" style={{marginTop:8}}>{err}</div>}
-          <h3 style={{margin:'14px 0 6px'}}>Past Games</h3>
-          <div className="tr" style={{display:'grid',gridTemplateColumns:'90px 1fr 80px',gap:8,fontWeight:700}}>
-            <div>Date</div><div>Game</div><div>Prize</div>
-          </div>
-          {(games||[]).map((g,i)=>(
-            <div key={i} className="tr" style={{display:'grid',gridTemplateColumns:'90px 1fr 80px',gap:8}}>
-              <div>{new Date(g.created_at).toLocaleDateString()}</div>
-              <div>{g.name}</div>
-              <div>£{(g.prize_cents/100).toFixed(0)}</div>
+    <div style={styles.app}>
+      <TopNav />
+      <main style={styles.main}>
+        <h1>Dashboard</h1>
+        <section style={styles.section}>
+          <h2>Your Pub</h2>
+          <div style={styles.pubCard}>
+            <div style={styles.pubHeader}>
+              <span style={styles.pubName}>The King’s Arms</span>
+              <span
+                style={{ ...styles.statusDot, backgroundColor: 'green' }}
+                title="Active"
+              ></span>
+              <span style={styles.expiry}>Expires on 10 Aug 2025</span>
             </div>
-          ))}
-        </GlassCard>
-
-        <GlassCard tone="newgame" title="NEW GAME">
-          <div className="field">
-            <span>Game Type</span>
-            <select className="select" defaultValue="crack_the_safe">
-              <option value="crack_the_safe">Crack the Safe</option>
-              <option value="whats_in_the_box">What’s in the Box</option>
-            </select>
+            <div>City: Basingstoke</div>
+            <div>Address: 1 High St</div>
           </div>
-          <div className="field">
-            <span>Prize Amount (£)</span>
-            <input className="input" type="number" min="0" step="1" defaultValue="100"/>
-          </div>
-          <NeonButton onClick={()=>location.assign('/raffle')}>Start Game</NeonButton>
-        </GlassCard>
+        </section>
 
-        <GlassCard tone="game" title="CRACK THE SAFE" subtitle={pub?`Live • ${pub.name}`:'Live'}>
-          {pub ? (
-            <div style={{display:'grid',gap:12}}>
-              <div style={{display:'grid',gap:10,gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))'}}>
-                <div className="card" style={{background:'rgba(0,0,0,.12)'}}>
-                  <h3 style={{marginTop:0}}>Player QR</h3>
-                  <img alt="Crack QR" width="220" height="220" src={qr(crackURL)} style={{borderRadius:12}}/>
-                  <small>{crackURL}</small>
-                </div>
-                <div className="card" style={{background:'rgba(0,0,0,.12)'}}>
-                  <h3 style={{marginTop:0}}>Box QR</h3>
-                  <img alt="Box QR" width="220" height="220" src={qr(boxURL)} style={{borderRadius:12}}/>
-                  <small>{boxURL}</small>
-                </div>
-              </div>
-            </div>
-          ) : <div>Loading…</div>}
-        </GlassCard>
-      </div>
+        <section style={styles.section}>
+          <h2>Games</h2>
+          <div style={styles.gamesGrid}>
+            <Link
+              to={{
+                pathname: '/crack-the-safe',
+                state: { from: location.pathname }
+              }}
+              style={styles.gameCard}
+            >
+              <h3>Crack the Safe</h3>
+              <p>Guess the 3-digit code to win!</p>
+              <button style={styles.playBtn}>Play</button>
+            </Link>
+            <Link
+              to={{
+                pathname: '/whats-in-the-box',
+                state: { from: location.pathname }
+              }}
+              style={styles.gameCard}
+            >
+              <h3>What’s in the Box</h3>
+              <p>Pick the winning box!</p>
+              <button style={styles.playBtn}>Play</button>
+            </Link>
+          </div>
+        </section>
+
+        <section style={styles.section}>
+          <h2>Stats</h2>
+          <div>Players this week: 12</div>
+          <div>Prizes won: 3</div>
+        </section>
+      </main>
     </div>
   );
 }
+
+const styles = {
+  app: {
+    minHeight: '100vh',
+    background: '#0f172a',
+    color: '#fff',
+    display: 'grid',
+    gridTemplateRows: 'auto 1fr'
+  },
+  main: { padding: 20, maxWidth: 900, margin: '0 auto' },
+  section: { marginBottom: 30 },
+  pubCard: {
+    padding: 15,
+    borderRadius: 8,
+    background: 'rgba(255,255,255,0.05)'
+  },
+  pubHeader: { display: 'flex', alignItems: 'center', gap: 8 },
+  pubName: { fontWeight: 700 },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    display: 'inline-block'
+  },
+  expiry: { marginLeft: 'auto', fontSize: 12, color: '#94a3b8' },
+  gamesGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 },
+  gameCard: {
+    padding: 15,
+    borderRadius: 8,
+    background: 'rgba(255,255,255,0.05)',
+    textDecoration: 'none',
+    color: 'inherit'
+  },
+  playBtn: {
+    marginTop: 10,
+    padding: '6px 12px',
+    borderRadius: 6,
+    border: 'none',
+    background: '#22c55e',
+    color: '#0f172a',
+    fontWeight: 700,
+    cursor: 'pointer'
+  }
+};

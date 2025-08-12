@@ -10,23 +10,27 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [info, setInfo] = useState('');
 
-  const onSubmit = async (e) => {
+  async function onSubmit(e) {
     e.preventDefault();
     setErr('');
     if (!email || !password) return setErr('Please enter your email and password.');
     try {
       setLoading(true);
+      setInfo('Contacting server…');
       const data = await api.post('/api/login', { email, password });
       if (!data?.token) throw new Error('No token returned');
       setToken(data.token);
+      setInfo('Logged in. Redirecting…');
       nav('/dashboard', { replace: true });
     } catch (e2) {
       setErr(e2.message || 'Login failed');
+      setInfo('');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const s = getStyles();
 
@@ -37,6 +41,7 @@ export default function LoginPage() {
           <h1 style={s.title}>Welcome back</h1>
           <p style={s.subtext}>Sign in to manage your pub games.</p>
 
+          {info && <div style={s.alertInfo}>{info}</div>}
           {err && <div style={s.alertError}>{err}</div>}
 
           <label style={s.field}>
@@ -96,39 +101,24 @@ export default function LoginPage() {
 }
 
 function getStyles() {
-  const shadow = '0 10px 20px rgba(0,0,0,0.08), 0 6px 6px rgba(0,0,0,0.05)';
-  const font = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
-
   const colors = {
-    bg1: '#0b1220',
-    bg2: '#0f172a',
-    panel: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))',
-    border: 'rgba(255,255,255,0.08)',
-    text: '#e5e7eb',
-    sub: '#94a3b8',
-    brandStart: '#22c55e',
-    brandEnd: '#16a34a',
+    bg1: '#0b1220', bg2: '#0f172a', text: '#e5e7eb', sub: '#94a3b8',
+    border: 'rgba(255,255,255,0.08)', brandStart: '#22c55e', brandEnd: '#16a34a',
   };
+  const shadow = '0 10px 20px rgba(0,0,0,0.08), 0 6px 6px rgba(0,0,0,0.05)';
 
   return {
     shell: {
       minHeight: '100vh',
       background: `linear-gradient(180deg, ${colors.bg1} 0%, ${colors.bg2} 100%)`,
       color: colors.text,
-      fontFamily: font,
-      display: 'grid',
-      gridTemplateRows: '1fr auto',
+      fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
+      display: 'grid', gridTemplateRows: '1fr auto',
     },
     main: { display: 'grid', placeItems: 'center', padding: 20 },
-
     card: {
-      width: 'min(480px, 92vw)',
-      background: colors.panel,
-      border: `1px solid ${colors.border}`,
-      borderRadius: 20,
-      boxShadow: shadow,
-      padding: 20,
-      display: 'grid', gap: 14,
+      width: 'min(480px, 92vw)', background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))',
+      border: `1px solid ${colors.border}`, borderRadius: 20, boxShadow: shadow, padding: 20, display: 'grid', gap: 14,
     },
     title: { margin: 0, fontSize: 24, fontWeight: 800, color: '#fff' },
     subtext: { margin: 0, color: colors.sub },
@@ -142,7 +132,7 @@ function getStyles() {
     revealBtn: {
       position: 'absolute', right: 8, top: 6, height: 32, width: 32,
       borderRadius: 10, border: `1px solid ${colors.border}`,
-      background: 'rgba(255,255,255,0.06)', color: '#e5e7eb', cursor:'pointer',
+      background: 'rgba(255,255,255,0.06)', color: '#e5e7eb', cursor: 'pointer',
     },
     submit: {
       padding: '10px 14px', borderRadius: 12, border: 'none',
@@ -155,6 +145,10 @@ function getStyles() {
     alertError: {
       background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
       color: '#fecaca', padding: 10, borderRadius: 10,
+    },
+    alertInfo: {
+      background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.35)',
+      color: '#bfdbfe', padding: 10, borderRadius: 10,
     },
     footer: {
       padding: 14, textAlign: 'center', color: '#64748b',

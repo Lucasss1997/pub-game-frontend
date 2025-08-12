@@ -1,34 +1,38 @@
-// src/App.jsx
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import './ui/neon.css';
 
-import TopNav from './components/TopNav';
-import PrivateRoute from './components/PrivateRoute';
-
+// NEW neon pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Enter from './pages/Enter';
+import CrackTheSafe from './pages/CrackTheSafe';
+import WhatsInTheBox from './pages/WhatsInTheBox';
 import Pricing from './pages/Pricing';
 import Raffle from './pages/Raffle';
-import Enter from './pages/Enter';
+import Billing from './pages/Billing';
 
-import CrackSafePublic from './pages/play/CrackSafePublic';
-import WhatsInTheBoxPublic from './pages/play/WhatsInTheBoxPublic';
+// If you use auth guards, swap this for your real check
+const isAuthed = () => !!localStorage.getItem('token');
 
-// Simple layout wrappers so TopNav shows on both public & private pages
-function PublicLayout() {
-  return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#e5e7eb' }}>
-      <TopNav />
-      <Outlet />
-    </div>
-  );
+function PrivateRoute({ children }) {
+  return isAuthed() ? children : <Navigate to="/login" replace />;
 }
 
-function PrivateLayout() {
+function Home() {
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#e5e7eb' }}>
-      <TopNav />
-      <Outlet />
+    <div className="neon-wrap">
+      <div className="neon-grid" style={{ maxWidth: 980 }}>
+        <section className="card dashboard">
+          <h2>Welcome to Pub Game</h2>
+          <small>Scan a QR to play, or sign in to manage your pub’s games.</small>
+          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+            <a className="btn" href="/login">Sign in</a>
+            <a className="btn ghost" href="/crack-the-safe">Crack the Safe (demo)</a>
+            <a className="btn ghost" href="/whats-in-the-box">What’s in the Box (demo)</a>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -37,41 +41,17 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public routes */}
-        <Route element={<PublicLayout />}>
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="/login" element={<Login />} />
-
-          {/* Public entry (QR → pay) */}
-          <Route path="/enter/:pubId/:gameKey" element={<Enter />} />
-
-          {/* Public play pages (customers can access directly or via QR) */}
-          <Route path="/play/crack-the-safe" element={<CrackSafePublic />} />
-          <Route path="/play/whats-in-the-box" element={<WhatsInTheBoxPublic />} />
-        </Route>
-
-        {/* Private (requires auth) */}
-        <Route element={<PrivateRoute />}>
-          <Route element={<PrivateLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/raffle" element={<Raffle />} />
-          </Route>
-        </Route>
-
-        {/* 404 */}
-        <Route path="*" element={<NotFound />} />
+        <Route path="/" element={<Home/>} />
+        <Route path="/login" element={<Login/>} />
+        <Route path="/dashboard" element={<PrivateRoute><Dashboard/></PrivateRoute>} />
+        <Route path="/enter/:pubId/:gameKey" element={<Enter/>} />
+        <Route path="/crack-the-safe" element={<CrackTheSafe/>} />
+        <Route path="/whats-in-the-box" element={<WhatsInTheBox/>} />
+        <Route path="/pricing" element={<PrivateRoute><Pricing/></PrivateRoute>} />
+        <Route path="/raffle" element={<PrivateRoute><Raffle/></PrivateRoute>} />
+        <Route path="/billing" element={<PrivateRoute><Billing/></PrivateRoute>} />
+        <Route path="*" element={<Navigate to="/" replace/>} />
       </Routes>
     </BrowserRouter>
-  );
-}
-
-function NotFound() {
-  return (
-    <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
-      <h1 style={{ marginTop: 0 }}>Not found</h1>
-      <p>That page doesn’t exist.</p>
-      <a href="/" style={{ color: '#22c55e', textDecoration: 'none' }}>Go home</a>
-    </div>
   );
 }

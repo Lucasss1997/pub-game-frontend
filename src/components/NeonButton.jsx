@@ -1,7 +1,14 @@
 import React from 'react';
 
-export default function NeonButton({ children, kind='primary', as:'button' | 'a', href, ...rest }) {
-  const cls = kind==='danger' ? 'btn alt' : kind==='ghost' ? 'btn ghost' : 'btn';
-  if (as === 'a' && href) return <a className={cls} href={href} {...rest}>{children}</a>;
-  return <button className={cls} {...rest}>{children}</button>;
+export default function NeonButton(props) {
+  const { children, kind, ...rest } = props;
+  let cls = 'btn';
+  if (kind === 'danger') cls = 'btn alt';
+  else if (kind === 'ghost') cls = 'btn ghost';
+
+  return (
+    <button className={cls} {...rest}>
+      {children}
+    </button>
+  );
 }

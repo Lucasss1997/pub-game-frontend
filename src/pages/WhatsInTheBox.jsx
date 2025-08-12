@@ -1,50 +1,50 @@
-import React, { useState } from 'react';
-import { api } from '../lib/api';
+import React, { useEffect, useState } from 'react';
+import { connectLive } from '../../lib/live';
+import { api } from '../../lib/api';
 
-export default function WhatsInTheBox(){
-  const [pick,setPick]=useState(null);
-  const [msg,setMsg]=useState('');
-  const [err,setErr]=useState('');
-  const [busy,setBusy]=useState(false);
+export default function WhatsInTheBoxPublic() {
+  const [pubId, setPubId] = useState(null);
+  const [ticketPrice, setTicketPrice] = useState(200);
+  const [jackpot, setJackpot] = useState(0);
 
-  async function submit(){
-    setMsg(''); setErr('');
-    try{
-      setBusy(true);
-      const d = await api.post('/api/games/box/pick',{ box: pick });
-      // server returns { result: 'win' | 'lose' }
-      setMsg(d?.result==='win' ? '🎉 You picked the prize!' : '😅 Unlucky this time!');
-    }catch(ex){ setErr(ex.message||'Error'); }
-    finally{ setBusy(false); }
-  }
+  useEffect(() => {
+    (async () => {
+      try {
+        const dash = await api.get('/api/dashboard');
+        const id = dash?.pubs?.[0]?.id || 1;
+        setPubId(id);
+
+        const p = await api.get('/api/admin/products');
+        const list = Array.isArray(p?.products) ? p.products : [];
+        const item = list.find(x => x.game_key === 'whats_in_the_box');
+        if (item) setTicketPrice(item.price_cents);
+
+        const j = await api.get('/api/admin/jackpot');
+        if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!pubId) return;
+    const es = connectLive(pubId, {
+      onProducts: (p) => {
+        if (p?.game_key === 'whats_in_the_box' && typeof p.price_cents === 'number') {
+          setTicketPrice(p.price_cents);
+        }
+      },
+      onJackpot: (j) => {
+        if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
+      },
+    });
+    return () => es.close && es.close();
+  }, [pubId]);
 
   return (
-    <div className="pg-wrap">
-      <div className="pg-narrow pg-stack">
-        <div className="pg-card">
-          <h1 className="pg-title">WHAT’S IN THE BOX</h1>
-          <p className="pg-sub">Tap a box to choose</p>
-
-          {err && <div className="pg-bad">{err}</div>}
-          {msg && <div className="pg-good">{msg}</div>}
-
-          <div className="pg-row" style={{marginTop:6}}>
-            {[1,2,3,4,5,6].map(n=>(
-              <button key={n} className="pg-btn" onClick={()=>setPick(n)}
-                style={{background: pick===n ? '#7c3aed' : undefined}}>
-                Box {n}
-              </button>
-            ))}
-          </div>
-
-          <div className="pg-row" style={{marginTop:10}}>
-            <button className="pg-btn" onClick={submit} disabled={busy || !pick}>
-              {busy ? 'Checking…' : 'Submit'}
-            </button>
-            <a className="pg-btn ghost" href="/dashboard">Back</a>
-          </div>
-        </div>
-      </div>
+    <div style={{ padding: 20, color: '#fff' }}>
+      <h1>What’s in the Box</h1>
+      <p>Ticket: £{(ticketPrice/100).toFixed(2)} · Jackpot: £{(jackpot/100).toFixed(2)}</p>
+      {/* ...rest of your game UI... */}
     </div>
   );
 }

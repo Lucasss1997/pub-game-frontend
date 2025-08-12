@@ -1,0 +1,95 @@
+.admin-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+  background: #f7941d; /* Orange background */
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+}
+
+.admin-card {
+  background: #f7a53d;
+  padding: 20px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+  color: #4b0082;
+}
+
+.admin-card h1 {
+  margin: 0 0 10px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #4b0082;
+}
+
+.admin-card p {
+  margin: 0 0 10px;
+}
+
+.product-card, .jackpot-card {
+  background: #f7a53d;
+  padding: 20px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+  color: #4b0082;
+}
+
+label {
+  font-weight: bold;
+  margin-top: 10px;
+  display: block;
+}
+
+input, select {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  border-radius: 10px;
+  border: none;
+  background: #ffe187;
+  font-size: 16px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 15px;
+  background: #4b0082;
+  color: #fff;
+  border-radius: 8px;
+  border: none;
+  margin-top: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  text-align: center;
+}
+
+.btn:hover {
+  background: #5e0ea8;
+}
+
+.back-btn {
+  background: transparent;
+  color: #4b0082;
+  border: 2px solid #4b0082;
+}
+
+.save-btn {
+  background: #4b0082;
+  color: #fff;
+}
+
+.error {
+  background: #ffcccc;
+  color: #900;
+  padding: 8px;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+
+.ok {
+  background: #c2ffcc;
+  color: #060;
+  padding: 8px;
+  border-radius: 6px;
+  margin: 10px 0;
+}

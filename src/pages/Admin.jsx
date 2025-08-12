@@ -1,161 +1,165 @@
-// src/pages/Admin.jsx
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-
-const pounds = (cents) => (cents / 100).toFixed(2);
-const toCents = (v) => Math.max(0, Math.round(parseFloat(v || '0') * 100));
+import { useNavigate } from 'react-router-dom';
+import './admin.css';
 
 export default function Admin() {
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  const [products, setProducts] = useState([]);
+  const [jackpot, setJackpot] = useState(0);
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // editable products (per‑game ticket/options)
-  const [products, setProducts] = useState([
-    { game_key: 'crack', name: 'Crack the Safe Ticket', price_cents: 200, active: true },
-    { game_key: 'box',   name: 'What’s in the Box Ticket', price_cents: 200, active: true },
-  ]);
-
-  // jackpot (shared pot)
-  const [jackpot, setJackpot] = useState(0);
-
+  // Load admin data
   useEffect(() => {
     (async () => {
-      setErr(''); setOk('');
+      setErr('');
+      setOk('');
       try {
         setLoading(true);
-        // Expect: { products: [{id?, game_key, name, price_cents, active}] }
         const p = await api.get('/api/admin/products');
         if (p?.products) setProducts(p.products);
 
-        // Expect: { jackpot_cents: number }
         const j = await api.get('/api/admin/jackpot');
         if (typeof j?.jackpot_cents === 'number') setJackpot(j.jackpot_cents);
       } catch (e) {
-        setErr(e.message || 'Load failed');
+        const msg = [
+          e.status && `status ${e.status}`,
+          e.body && JSON.stringify(e.body),
+          e.message,
+        ]
+          .filter(Boolean)
+          .join(' – ');
+        setErr(msg || 'Load failed');
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  function patchProduct(idx, patch) {
-    setProducts((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], ...patch };
-      return copy;
-    });
-  }
-
-  async function saveProduct(idx) {
-    setErr(''); setOk('');
+  const updateProduct = async (id, changes) => {
     try {
-      const row = products[idx];
-      await api.post('/api/admin/products', {
-        game_key: row.game_key,
-        name: row.name,
-        price_cents: row.price_cents,
-        active: !!row.active,
-      });
-      setOk('Product saved.');
+      setErr('');
+      setOk('');
+      await api.post('/api/admin/products', { id, ...changes });
+      setOk('Saved');
     } catch (e) {
-      setErr(e.message || 'Save failed');
+      const msg = [
+        e.status && `status ${e.status}`,
+        e.body && JSON.stringify(e.body),
+        e.message,
+      ]
+        .filter(Boolean)
+        .join(' – ');
+      setErr(msg || 'Save failed');
     }
-  }
+  };
 
-  async function saveJackpot() {
-    setErr(''); setOk('');
+  const updateJackpot = async () => {
     try {
+      setErr('');
+      setOk('');
       await api.post('/api/admin/jackpot', { jackpot_cents: jackpot });
-      setOk('Jackpot saved.');
+      setOk('Jackpot saved');
     } catch (e) {
-      setErr(e.message || 'Save failed');
+      const msg = [
+        e.status && `status ${e.status}`,
+        e.body && JSON.stringify(e.body),
+        e.message,
+      ]
+        .filter(Boolean)
+        .join(' – ');
+      setErr(msg || 'Jackpot save failed');
     }
-  }
+  };
 
   return (
-    <div className="pg-wrap">
-      <div className="pg-wide pg-stack">
-        <div className="pg-card">
-          <h1 className="pg-title">ADMIN</h1>
-          <p className="pg-sub">Set ticket prices, toggle availability, and manage the jackpot.</p>
-          {loading && <div>Loading…</div>}
-          {err && <div className="pg-bad">{err}</div>}
-          {ok && <div className="pg-good">{ok}</div>}
-          <div className="pg-row" style={{ marginTop: 8 }}>
-            <a href="/dashboard" className="pg-btn ghost">Back to Dashboard</a>
-          </div>
-        </div>
+    <div className="admin-wrap">
+      <section className="card admin-card">
+        <h1>ADMIN</h1>
+        <p>Set ticket prices, toggle availability, and manage the jackpot.</p>
+        {err && <div className="error">{err}</div>}
+        {ok && <div className="ok">{ok}</div>}
+        <button onClick={() => navigate('/dashboard')} className="btn back-btn">
+          Back to Dashboard
+        </button>
+      </section>
 
-        {/* Products (per‑game ticket config) */}
-        <div className="pg-row">
-          {products.map((p, idx) => (
-            <section key={p.game_key} className="pg-card" style={{ flex: 1, minWidth: 300 }}>
-              <h2 className="pg-title" style={{ fontSize: 28 }}>
-                {p.game_key === 'crack' ? 'Crack the Safe' : 'What’s in the Box'}
-              </h2>
+      {loading && <div>Loading...</div>}
 
-              <label className="pg-field">
-                <span className="pg-label">Product name</span>
-                <input
-                  className="pg-input"
-                  value={p.name}
-                  onChange={(e) => patchProduct(idx, { name: e.target.value })}
-                />
-              </label>
-
-              <label className="pg-field">
-                <span className="pg-label">Ticket price (£)</span>
-                <input
-                  className="pg-number"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={pounds(p.price_cents)}
-                  onChange={(e) => patchProduct(idx, { price_cents: toCents(e.target.value) })}
-                />
-              </label>
-
-              <label className="pg-field">
-                <span className="pg-label">Active</span>
-                <select
-                  className="pg-select"
-                  value={p.active ? '1' : '0'}
-                  onChange={(e) => patchProduct(idx, { active: e.target.value === '1' })}
-                >
-                  <option value="1">Yes</option>
-                  <option value="0">No</option>
-                </select>
-              </label>
-
-              <div className="pg-row" style={{ marginTop: 8 }}>
-                <button className="pg-btn" onClick={() => saveProduct(idx)}>Save</button>
-              </div>
+      {!loading && (
+        <>
+          {products.map((prod) => (
+            <section key={prod.id} className="card product-card">
+              <h2>{prod.game_key === 'crack' ? 'Crack the Safe' : prod.game_key}</h2>
+              <label>Product name</label>
+              <input
+                value={prod.name}
+                onChange={(e) =>
+                  setProducts((old) =>
+                    old.map((p) =>
+                      p.id === prod.id ? { ...p, name: e.target.value } : p
+                    )
+                  )
+                }
+              />
+              <label>Ticket price (£)</label>
+              <input
+                type="number"
+                value={(prod.price_cents / 100).toFixed(2)}
+                onChange={(e) =>
+                  setProducts((old) =>
+                    old.map((p) =>
+                      p.id === prod.id
+                        ? { ...p, price_cents: Math.round(parseFloat(e.target.value) * 100) }
+                        : p
+                    )
+                  )
+                }
+              />
+              <label>Active</label>
+              <select
+                value={prod.active ? 'Yes' : 'No'}
+                onChange={(e) =>
+                  setProducts((old) =>
+                    old.map((p) =>
+                      p.id === prod.id
+                        ? { ...p, active: e.target.value === 'Yes' }
+                        : p
+                    )
+                  )
+                }
+              >
+                <option>Yes</option>
+                <option>No</option>
+              </select>
+              <button
+                className="btn save-btn"
+                onClick={() => updateProduct(prod.id, prod)}
+              >
+                Save
+              </button>
             </section>
           ))}
-        </div>
 
-        {/* Jackpot */}
-        <section className="pg-card">
-          <h2 className="pg-title" style={{ fontSize: 28 }}>Jackpot</h2>
-          <div className="pg-row">
-            <label className="pg-field" style={{ flex: 1 }}>
-              <span className="pg-label">Jackpot amount (£)</span>
-              <input
-                className="pg-number"
-                type="number"
-                step="0.01"
-                min="0"
-                value={pounds(jackpot)}
-                onChange={(e) => setJackpot(toCents(e.target.value))}
-              />
-            </label>
-          </div>
-          <div className="pg-row" style={{ marginTop: 8 }}>
-            <button className="pg-btn" onClick={saveJackpot}>Save jackpot</button>
-          </div>
-        </section>
-      </div>
+          <section className="card jackpot-card">
+            <h2>Jackpot</h2>
+            <label>Jackpot (£)</label>
+            <input
+              type="number"
+              value={(jackpot / 100).toFixed(2)}
+              onChange={(e) =>
+                setJackpot(Math.round(parseFloat(e.target.value) * 100))
+              }
+            />
+            <button className="btn save-btn" onClick={updateJackpot}>
+              Save Jackpot
+            </button>
+          </section>
+        </>
+      )}
     </div>
   );
 }

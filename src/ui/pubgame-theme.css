@@ -1,0 +1,65 @@
+/* Global background + type */
+:root{
+  --bg1:#1d1df7; --bg2:#1b4df7;
+  --card-orange:#f59e0b; --card-purple:#8b5cf6;
+  --card-teal:#14b8a6; --card-green:#22c55e;
+  --ink:#0b1220; --ink-inv:#ffffff;
+  --shadow:0 18px 40px rgba(0,0,0,.28);
+  --radius:22px;
+}
+html,body,#root{height:100%}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background: radial-gradient(1200px 800px at 50% -200px, var(--bg2), var(--bg1));
+  color:var(--ink-inv);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+}
+
+/* Layout shell */
+.pg-wrap{min-height:100vh;display:grid;place-items:center;padding:22px}
+.pg-grid{width:min(1200px,94vw);display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+
+/* Cards */
+.pg-card{
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:20px;
+  display:grid; gap:14px;
+  color:var(--ink);
+}
+.pg-card h2{margin:6px 0 2px 0;font-size:28px;line-height:1.1;color:var(--ink)}
+.pg-card small{opacity:.9;font-weight:600}
+
+/* Card tones */
+.pg-card.orange{background:var(--card-orange)}
+.pg-card.purple{background:var(--card-purple); color:#fff}
+.pg-card.teal{background:var(--card-teal); color:#032c2a}
+.pg-card.green{background:var(--card-green); color:#052a15}
+
+/* Fields / buttons */
+.pg-field{display:grid;gap:6px}
+.pg-label{font-size:13px;opacity:.9;color:#0b1220}
+.pg-input,.pg-select{
+  width:100%; padding:12px 14px; border:none; outline:none;
+  background:rgba(255,255,255,.22); color:#fff; border-radius:14px;
+  font-weight:600;
+}
+.pg-input::placeholder{color:rgba(255,255,255,.82)}
+.pg-btn{
+  display:inline-block; text-align:center; cursor:pointer;
+  border:none; border-radius:14px; padding:12px 16px;
+  font-weight:900; color:#0b1220; background:#22c55e;
+  box-shadow:0 8px 16px rgba(0,0,0,.25);
+}
+.pg-btn.ghost{background:rgba(255,255,255,.22); color:#fff}
+.pg-btn.danger{background:#ef4444; color:#fff}
+
+/* Alerts */
+.pg-bad{background:rgba(239,68,68,.18); border:1px solid rgba(239,68,68,.45); padding:10px; border-radius:12px; color:#3c0d0d}
+.pg-good{background:rgba(34,197,94,.18); border:1px solid rgba(34,197,94,.45); padding:10px; border-radius:12px; color:#06240f}
+
+/* Simple nav bar to match look */
+.pg-nav{width:100%; max-width:min(1200px,94vw); margin:0 auto 18px; display:flex; align-items:center; gap:10px}
+.pg-brand{display:flex; align-items:center; gap:10px; font-weight:900; letter-spacing:.2px}
+.pg-chip{margin-left:auto; padding:8px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(0,0,0,.2); color:#fff; text-decoration:none}

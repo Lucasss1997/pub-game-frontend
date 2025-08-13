@@ -1,55 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { API_BASE, WS_BASE } from '../lib/env';
-import { api } from '../lib/api';
+import api from '../lib/api';
+import '../ui/pubgame-theme.css';
 
 export default function Enter() {
   const { pubId, gameKey } = useParams();
-  const [status, setStatus] = useState('');
-  const [jackpot, setJackpot] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [gameData, setGameData] = useState(null);
 
   useEffect(() => {
-    async function fetchJackpot() {
+    async function fetchData() {
       try {
-        const res = await fetch(`${API_BASE}/api/jackpot/${pubId}/${gameKey}`);
-        if (!res.ok) throw new Error('Failed to fetch jackpot');
-        const data = await res.json();
-        setJackpot(data.jackpot_cents / 100);
+        const res = await api.get(`${API_BASE}/game/${pubId}/${gameKey}`);
+        setGameData(res);
       } catch (err) {
         console.error(err);
+      } finally {
+        setLoading(false);
       }
     }
-    fetchJackpot();
+    fetchData();
   }, [pubId, gameKey]);
 
-  useEffect(() => {
-    const wsUrl = `${WS_BASE}/ws?pubId=${pubId}&gameKey=${gameKey}`;
-    const ws = new WebSocket(wsUrl);
-    ws.onmessage = (msg) => {
-      const data = JSON.parse(msg.data);
-      if (data.type === 'update') {
-        setJackpot(data.jackpot_cents / 100);
-      }
-    };
-    return () => ws.close();
-  }, [pubId, gameKey]);
-
-  const handleJoin = async () => {
-    try {
-      const res = await api.post(`/api/join/${pubId}/${gameKey}`);
-      if (!res.ok) throw new Error('Join failed');
-      setStatus('Joined successfully!');
-    } catch (err) {
-      setStatus(`Error: ${err.message}`);
-    }
-  };
+  if (loading) return <div>Loading...</div>;
 
   return (
-    <div className="enter-wrap">
-      <h1>Enter Game</h1>
-      {jackpot !== null && <p>Current Jackpot: £{jackpot}</p>}
-      <button onClick={handleJoin}>Join Game</button>
-      {status && <p>{status}</p>}
+    <div className="page">
+      <h1>{gameData?.name || 'Game'}</h1>
+      {/* Your existing UI for Enter page */}
     </div>
   );
 }

@@ -1,130 +1,139 @@
-/* Pub Game – Neon/Retro Theme (classic look)
-   Drop-in stylesheet. No JS changes required. */
+/* src/ui/pubgame-theme.css */
+/* Global theme: Orange background, Purple accents, warm cream inputs */
 
-/* ---------- Theme tokens ---------- */
 :root{
-  --bg: #ea9b14;           /* orange background */
-  --panel: #f1a52a;        /* lighter orange card */
-  --panel-deep:#e09419;
-  --ink: #2b1f0f;          /* dark text */
-  --muted:#523b18;
-
-  --primary:#5a22c9;       /* purple buttons/links */
-  --primary-ink:#ffffff;
-  --primary-ghost:#39207c;
-
-  --accent:#00d4ff;        /* cyan accents (headings) */
-  --success:#18c37e;
-  --danger:#ff4d6d;
-
-  --input:#ffe38d;         /* banana inputs */
-  --input-ink:#2b1f0f;
-  --ring:#3a1bb9;          /* purple outline */
-  --shadow: 0 16px 40px rgba(0,0,0,.25), 0 6px 16px rgba(0,0,0,.18);
-  --radius: 24px;
+  --bg: #e29210;          /* page background */
+  --card: #efac38;        /* card panels */
+  --card-shadow: #b97308;
+  --text: #2b1a06;        /* primary text */
+  --muted: #5a3a12;       /* secondary text */
+  --cream: #fff6b8;       /* inputs */
+  --accent: #5a21cc;      /* purple buttons/outline */
+  --accent-2: #3b1392;    /* darker purple for shadows/hover */
+  --accent-3: #7a4af0;    /* lighter purple for borders */
+  --danger: #e84e5a;
+  --success: #16a34a;
 }
 
-/* ---------- Page base ---------- */
-*{box-sizing:border-box}
-html,body,#root{height:100%}
-body{
-  margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+/* Reset-ish */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+  color: var(--text);
   background: var(--bg);
-  color: var(--ink);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ---------- Containers / cards ---------- */
-.pg-wrap{ max-width: 1060px; margin: 0 auto; padding: 32px 20px 120px; }
-.card{
-  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-deep) 100%);
-  border-radius: var(--radius);
-  padding: 22px;
-  box-shadow: var(--shadow);
-  border: 3px solid rgba(58,27,185,.9);
+/* Layout */
+.pg-screen {
+  min-height: 100%;
+  padding: 24px 16px 56px;
 }
-.card + .card{ margin-top: 18px }
-
-/* ---------- Headings ---------- */
-h1,h2,h3{ margin:0 0 12px 0; font-weight: 900; letter-spacing:.3px }
-h1{ font-size: 42px; color: var(--accent); text-shadow: 0 2px 0 rgba(0,0,0,.15) }
-h2{ font-size: 32px; color: #381794 }
-.section-title{
-  display:flex; align-items:center; gap:12px; margin: 10px 0 14px;
-  font-weight:900; color:#381794; font-size: 28px;
+.pg-card {
+  background: var(--card);
+  color: var(--text);
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 22px 18px;
+  border-radius: 18px;
+  box-shadow: 0 18px 0 var(--card-shadow), 0 4px 18px rgba(0,0,0,.2);
+  border: 3px solid var(--accent-3);
 }
 
-/* ---------- Buttons ---------- */
-.btn{
-  -webkit-appearance:none; appearance:none;
-  display:inline-flex; align-items:center; justify-content:center;
-  gap:10px; padding: 14px 22px;
-  font-weight: 800; letter-spacing:.3px;
-  border-radius: 18px; border:3px solid var(--ring);
-  background: var(--primary); color: var(--primary-ink);
-  box-shadow: 0 6px 0 var(--primary-ghost);
-  text-decoration:none; cursor:pointer; transition: transform .05s ease;
-}
-.btn:active{ transform: translateY(2px) }
-.btn.small{ padding:10px 14px; font-weight:800; border-radius:14px }
-
-.btn.ghost{
-  background: transparent; color: #220b68;
-  box-shadow: none;
-}
-.btn.danger{ background: var(--danger); border-color:#b31432; box-shadow:0 6px 0 #8e0f27 }
-
-/* Top-right little pill nav */
-.pillnav{ display:flex; gap:10px; flex-wrap:wrap }
-.pillnav a{ text-decoration:none }
-.pill{ @apply btn; } /* (comment for CSS-only builds) */
-
-/* ---------- Inputs ---------- */
-input,select,textarea{
-  width:100%; border: 3px solid var(--ring);
-  border-radius: 18px; padding: 14px 16px;
-  background: var(--input); color: var(--input-ink);
-  font-size: 16px; font-weight:700;
-  outline: none;
-}
-input::placeholder{ color: #7a5e2b; opacity:.9; font-weight:600 }
-
-label{ font-weight:900; color:#4a2a12; display:block; margin: 12px 0 8px }
-
-/* ---------- Grid helpers ---------- */
-.grid{ display:grid; gap:18px }
-.grid.cols-2{ grid-template-columns: 1fr 1fr }
-.grid.cols-3{ grid-template-columns: repeat(3,1fr) }
-@media (max-width: 880px){
-  .grid.cols-2,.grid.cols-3{ grid-template-columns: 1fr }
+/* Title – PURPLE (no more blue) */
+.pg-title{
+  margin: 0 0 16px;
+  font-weight: 900;
+  letter-spacing: .5px;
+  font-size: 42px;
+  color: var(--accent);
 }
 
-/* ---------- Info / error banners ---------- */
-.banner{
-  background:#ffd2de; color:#7a1030; border:3px solid #b31432;
-  border-radius:18px; padding:14px 16px; font-weight:800;
+/* Top nav buttons */
+.pg-nav{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 6px 0 20px;
 }
-.banner.success{
-  background:#d5ffe9; color:#0f5a3d; border-color:#0f5a3d;
+.pg-nav .pg-chip{
+  appearance: none;
+  border: 3px solid var(--accent-3);
+  background: transparent;
+  color: var(--text);
+  font-weight: 800;
+  padding: 10px 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 8px 0 var(--card-shadow);
+}
+.pg-nav .pg-chip:active{ transform: translateY(2px); box-shadow: 0 6px 0 var(--card-shadow); }
+.pg-chip.primary{
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent-2);
 }
 
-/* ---------- Little meta text ---------- */
-.meta{ color:#2f1c07; opacity:.8; font-weight:700 }
+/* Sections */
+.pg-block{ margin: 18px 0; }
+.pg-subtitle{
+  margin: 0 0 6px;
+  font-size: 24px;
+  color: var(--accent);
+  font-weight: 900;
+}
 
-/* ---------- Game panels ---------- */
-.game-panel .title{ font-weight:900; font-size:22px; margin-bottom:8px }
-.game-panel .actions{ display:flex; gap:10px; margin-top:14px }
+/* Lists */
+.pg-list{ margin: 8px 0 0; padding-left: 18px; }
+.pg-list li{ margin: 6px 0; }
 
-/* ---------- Footer spacer ---------- */
-.pg-spacer{ height:64px }
+/* Buttons */
+.pg-row{ display: flex; gap: 10px; flex-wrap: wrap; }
+.pg-button{
+  appearance: none;
+  border: 3px solid var(--accent-2);
+  background: var(--accent);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 0 var(--card-shadow);
+  text-decoration: none;
+}
+.pg-button.ghost{
+  background: transparent;
+  color: var(--text);
+  border-color: var(--accent-3);
+}
+.pg-button:active{ transform: translateY(2px); box-shadow: 0 8px 0 var(--card-shadow); }
 
-/* ---------- Tables (simple) ---------- */
-.table{ width:100%; border-collapse:separate; border-spacing:0 10px }
-.table th{ text-align:left; font-size:14px; color:#2f1c07; opacity:.8 }
-.table td{ background: var(--panel); padding:12px 16px; border:3px solid var(--ring); border-radius:12px }
+/* Alerts */
+.pg-alert{
+  background: #ffd7dd;
+  border: 3px solid #b91c1c;
+  color: #7f1d1d;
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin: 8px 0 14px;
+}
 
-/* ---------- Forms row ---------- */
-.form-row{ display:grid; grid-template-columns: 1fr 200px; gap:12px }
-@media (max-width: 640px){ .form-row{ grid-template-columns: 1fr } }
+/* Inputs */
+.pg-input{
+  width: 100%;
+  background: var(--cream);
+  border: 3px solid var(--accent-3);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+
+/* Tiny mute */
+.pg-muted{ color: var(--muted); font-size: 14px; }
+
+/* Links styled purple */
+a, .pg-link{ color: var(--accent); font-weight: 800; text-decoration: none; }
+a:hover, .pg-link:hover{ text-decoration: underline; }

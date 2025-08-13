@@ -1,202 +1,147 @@
-// src/pages/Admin.jsx
 import React, { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
-import "./admin.css";
-
-const GAMES = [
-  { key: "crack", title: "Crack the Safe" },
-  { key: "box",   title: "What's in the Box" },
-];
-
-const toPounds = (cents) => (Number.isFinite(cents) ? (cents / 100).toFixed(2) : "0.00");
-const toCents = (str) => {
-  const s = String(str ?? "").trim().replace(/[£,\s]/g, "");
-  if (!s || s === ".") return 0;
-  if (!/^\d+(\.\d{0,2})?$/.test(s)) throw new Error("Enter a money value like 2, 2.5, 2.50");
-  return Math.round(parseFloat(s) * 100);
-};
-
-function useAuthed() {
-  const [token] = useState(() => localStorage.getItem("token"));
-  return Boolean(token);
-}
+import { get, put } from "../lib/api";
 
 export default function Admin() {
-  const isAuthed = useAuthed();
-  const navigate = useNavigate();
+  const [products, setProducts] = useState([]);
+  const [jackpots, setJackpots] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState("");
-  const [diag, setDiag]       = useState(null);
-
-  // local state by game
-  const [jackpots, setJackpots] = useState({ crack: 0, box: 0 });
-  const [products, setProducts] = useState({
-    crack: { game_key: "crack", name: "£1 Standard Entry", price_cents: 100, active: true },
-    box:   { game_key: "box",   name: "£1 Standard Entry", price_cents: 100, active: true },
-  });
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
+    async function fetchData() {
       try {
-        setLoading(true);
-        setError("");
-
-        const data = await api.get("/api/admin/config");
-
-        if (!mounted) return;
-
-        const pb = data.productsByGame || {};
-        const jb = data.jackpotsByGame || {};
-
-        setProducts({
-          crack: pb.crack ?? { game_key: "crack", name: "£1 Standard Entry", price_cents: 100, active: true },
-          box:   pb.box   ?? { game_key: "box",   name: "£1 Standard Entry", price_cents: 100, active: true },
-        });
-
-        setJackpots({
-          crack: Number(jb.crack ?? 0),
-          box:   Number(jb.box   ?? 0),
-        });
-
-        setDiag({ products_count: data.productsCount ?? 0, jackpots_keys: Object.keys(jb).length });
-      } catch (e) {
-        setError(e?.message || String(e));
+        const productsData = await get("/api/admin/products");
+        const jackpotsData = await get("/api/admin/jackpots");
+        setProducts(productsData);
+        setJackpots(jackpotsData);
+      } catch (error) {
+        console.error(error);
       } finally {
-        if (mounted) setLoading(false);
+        setLoading(false);
       }
-    })();
-    return () => { mounted = false; };
+    }
+    fetchData();
   }, []);
 
-  if (!isAuthed) return <Navigate to="/login" replace />;
-
-  const handleSaveProduct = async (gameKey) => {
+  const handleSaveProduct = async (productId, updatedProduct) => {
     try {
-      setError("");
-      const p = products[gameKey];
-      const price_cents = toCents(toPounds(p.price_cents)); // normalize
-      const body = { products: [{ ...p, game_key: gameKey, price_cents }] };
-      await api.post("/api/admin/products", body);
-    } catch (e) {
-      setError(e?.message || String(e));
+      await put(`/api/admin/products/${productId}`, updatedProduct);
+      alert("Product updated!");
+    } catch (error) {
+      console.error(error);
+      alert("Failed to update product");
     }
   };
 
   const handleSaveJackpot = async (gameKey) => {
     try {
-      setError("");
-      const cents = toCents(toPounds(jackpots[gameKey]));
-      await api.post("/api/admin/jackpot", { game_key: gameKey, jackpot: cents });
-      setJackpots((prev) => ({ ...prev, [gameKey]: cents }));
-    } catch (e) {
-      setError(e?.message || String(e));
+      await put(`/api/admin/jackpots/${gameKey}`, {
+        amount: jackpots[gameKey] || 0,
+      });
+      alert("Jackpot updated!");
+    } catch (error) {
+      console.error(error);
+      alert("Failed to update jackpot");
     }
   };
 
-  const onChangeProduct = (gameKey, field, value) => {
-    setProducts((prev) => ({
-      ...prev,
-      [gameKey]: { ...prev[gameKey], [field]: value },
-    }));
-  };
+  if (loading) {
+    return <p>Loading...</p>;
+  }
+
+  // Group products by game
+  const grouped = products.reduce((acc, product) => {
+    if (!acc[product.game]) acc[product.game] = [];
+    acc[product.game].push(product);
+    return acc;
+  }, {});
 
   return (
-    <div className="admin-wrap">
-      <div className="admin-card">
-        <h1 className="admin-title">Admin</h1>
-        <div className="actions">
-          <button className="btn ghost" onClick={() => navigate("/dashboard")}>Back to dashboard</button>
-          <button className="btn ghost" onClick={() => navigate("/enter/preview")}>New game</button>
-          <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
-          <button
-            className="btn solid"
-            onClick={() => { localStorage.removeItem("token"); navigate("/login"); }}
-          >
-            Logout
-          </button>
-        </div>
-
-        {error && <div className="alert error">{error}</div>}
-        {diag && <pre className="diag">{JSON.stringify(diag, null, 2)}</pre>}
-      </div>
-
-      {loading ? (
-        <div className="admin-card"><p>Loading…</p></div>
-      ) : (
-        <>
-          {GAMES.map(({ key, title }) => {
-            const p = products[key];
-            const j = jackpots[key];
-
-            return (
-              <div key={key} className="admin-card">
-                <h2 className="section-title">{title}</h2>
-
-                {/* Product first */}
-                <div className="field">
-                  <span>Product name</span>
-                  <input
-                    value={p.name}
-                    onChange={(e) => onChangeProduct(key, "name", e.target.value)}
-                  />
-                </div>
-
-                <div className="field">
-                  <span>Ticket price (£)</span>
-                  <input
-                    inputMode="decimal"
-                    value={toPounds(p.price_cents)}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^\d.]/g, "");
-                      if (/^\d*\.?\d{0,2}$/.test(v)) {
-                        onChangeProduct(key, "price_cents", v ? Math.round(parseFloat(v) * 100) : 0);
-                      }
-                    }}
-                  />
-                </div>
-
-                <div className="field">
-                  <span>Active</span>
-                  <select
-                    value={p.active ? "yes" : "no"}
-                    onChange={(e) => onChangeProduct(key, "active", e.target.value === "yes")}
-                  >
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                </div>
-
-                <div className="actions" style={{ marginBottom: 12 }}>
-                  <button className="btn solid" onClick={() => handleSaveProduct(key)}>Save</button>
-                </div>
-
-                <hr style={{ border: 0, borderTop: "2px dashed #7a2dda55", margin: "12px 0" }} />
-
-                {/* Jackpot UNDER the product */}
-                <div className="field">
-                  <span>Jackpot (£)</span>
-                  <input
-                    inputMode="decimal"
-                    value={toPounds(j)}
-                    onChange={(e) => {
-                      const safe = e.target.value.replace(/[^\d.]/g, "");
-                      if (/^\d*\.?\d{0,2}$/.test(safe)) {
-                        const cents = safe ? Math.round(parseFloat(safe) * 100) : 0;
-                        setJackpots((prev) => ({ ...prev, [key]: cents }));
-                      }
-                    }}
-                  />
-                </div>
-                <div className="actions">
-                  <button className="btn solid" onClick={() => handleSaveJackpot(key)}>Save jackpot</button>
-                </div>
+    <div>
+      <h1>Admin</h1>
+      <div className="admin-container">
+        {Object.entries(grouped).map(([game, gameProducts]) => (
+          <div key={game} style={{ marginBottom: "40px" }}>
+            <h2>{game}</h2>
+            {gameProducts.map((product) => (
+              <div
+                key={product.id}
+                style={{
+                  borderBottom: "1px dashed purple",
+                  paddingBottom: "15px",
+                  marginBottom: "15px",
+                }}
+              >
+                <label>Product name</label>
+                <input
+                  type="text"
+                  value={product.name}
+                  onChange={(e) =>
+                    setProducts((prev) =>
+                      prev.map((p) =>
+                        p.id === product.id
+                          ? { ...p, name: e.target.value }
+                          : p
+                      )
+                    )
+                  }
+                />
+                <label>Ticket price (£)</label>
+                <input
+                  type="number"
+                  value={product.price}
+                  onChange={(e) =>
+                    setProducts((prev) =>
+                      prev.map((p) =>
+                        p.id === product.id
+                          ? { ...p, price: parseFloat(e.target.value) }
+                          : p
+                      )
+                    )
+                  }
+                />
+                <label>Active</label>
+                <select
+                  value={product.active ? "Yes" : "No"}
+                  onChange={(e) =>
+                    setProducts((prev) =>
+                      prev.map((p) =>
+                        p.id === product.id
+                          ? { ...p, active: e.target.value === "Yes" }
+                          : p
+                      )
+                    )
+                  }
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+                <button
+                  onClick={() => handleSaveProduct(product.id, product)}
+                  style={{ marginTop: "10px" }}
+                >
+                  Save
+                </button>
               </div>
-            );
-          })}
-        </>
-      )}
+            ))}
+
+            {/* Jackpot for this game */}
+            <label>Jackpot (£)</label>
+            <input
+              type="number"
+              value={jackpots[game] || 0}
+              onChange={(e) =>
+                setJackpots((prev) => ({
+                  ...prev,
+                  [game]: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <div style={{ marginBottom: "20px", marginTop: "10px" }}>
+              <button onClick={() => handleSaveJackpot(game)}>Save Jackpot</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

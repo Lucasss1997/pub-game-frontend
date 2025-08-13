@@ -1,60 +1,65 @@
 // src/lib/api.js
-// A tiny fetch wrapper that supports both default and named imports.
-// Works with auth cookies and/or bearer tokens.
 
-import { API_BASE } from "./env";
+let token = null;
 
-const BASE = (API_BASE || "").replace(/\/+$/, "");
+const setToken = (newToken) => {
+  token = newToken;
+};
 
-// --- token helpers (both cookie or header flows) ---
-export function setToken(token) {
-  if (token) localStorage.setItem("token", token);
-}
-export function getToken() {
-  return localStorage.getItem("token") || "";
-}
-export function clearToken() {
-  localStorage.removeItem("token");
-}
+const clearToken = () => {
+  token = null;
+};
 
-// --- core request ---
-async function request(path, { method = "GET", body } = {}) {
-  if (!BASE) throw new Error("API base not configured");
+const getToken = () => token;
 
-  const url = `${BASE}${path.startsWith("/") ? path : `/${path}`}`;
-
-  const headers = { "Content-Type": "application/json" };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(url, {
+const request = async (method, url, data) => {
+  const options = {
     method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    credentials: "include", // send/receive cookies too
-  });
+    headers: {
+      "Content-Type": "application/json",
+    },
+  };
 
-  // Try to parse JSON; fall back to text for HTML error bodies
-  const text = await res.text();
-  let data;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-
-  if (!res.ok) {
-    const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.data = data;
-    throw err;
+  if (token) {
+    options.headers["Authorization"] = `Bearer ${token}`;
   }
-  return data;
-}
 
-// --- verbs ---
-export function get(path)  { return request(path, { method: "GET" }); }
-export function post(path, body) { return request(path, { method: "POST", body }); }
-export function put(path, body)  { return request(path, { method: "PUT",  body }); }
-export function del(path)        { return request(path, { method: "DELETE" }); }
+  if (data) {
+    options.body = JSON.stringify(data);
+  }
 
-// Default export so you can also `import api from '../lib/api'`
-const api = { get, post, put, del, setToken, clearToken, getToken };
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "API request failed");
+  }
+
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+};
+
+const get = (url) => request("GET", url);
+const post = (url, data) => request("POST", url, data);
+const put = (url, data) => request("PUT", url, data);
+const del = (url) => request("DELETE", url);
+
+// The api object that can be imported as default or named
+const api = {
+  get,
+  post,
+  put,
+  del,
+  setToken,
+  clearToken,
+  getToken,
+};
+
+// Default export
 export default api;
+
+// Named export (so `{ api }` also works)
+export { api, get, post, put, del, setToken, clearToken, getToken };

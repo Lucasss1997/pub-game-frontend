@@ -1,11 +1,12 @@
 // src/lib/api.js
-// Fetch wrapper + tiny auth helpers.
-// Exports BOTH a named `api` and default export, AND setToken/getToken/clearToken.
+// Fetch wrapper that is BOTH callable and has .get/.post helpers.
+// Also exports tiny auth helpers used across the app.
+
 import { API_BASE } from './env';
 
 const base = (API_BASE || '').replace(/\/+$/, '');
 
-// ---- auth helpers (so existing imports keep working) ----
+// ---- auth helpers ----
 export function setToken(token) {
   if (token) localStorage.setItem('token', token);
 }
@@ -16,7 +17,7 @@ export function clearToken() {
   localStorage.removeItem('token');
 }
 
-// ---- request helper ----
+// ---- core request ----
 async function request(method, path, body) {
   const url = base + path;
   const headers = { 'Content-Type': 'application/json' };
@@ -45,11 +46,22 @@ async function request(method, path, body) {
   return data;
 }
 
-export const api = {
-  get:  (path)        => request('GET',  path),
-  post: (path, body)  => request('POST', path, body),
-  put:  (path, body)  => request('PUT',  path, body),
-  del:  (path, body)  => request('DELETE', path, body),
-};
+// ---- create a callable wrapper ----
+function createApi() {
+  // Callable signature: api(path, { method, body })
+  const callable = (path, opts = {}) => {
+    const method = (opts.method || 'GET').toUpperCase();
+    return request(method, path, opts.body);
+  };
 
+  // Convenience methods
+  callable.get  = (path)         => request('GET',    path);
+  callable.post = (path, body)   => request('POST',   path, body);
+  callable.put  = (path, body)   => request('PUT',    path, body);
+  callable.del  = (path, body)   => request('DELETE', path, body);
+
+  return callable;
+}
+
+export const api = createApi();
 export default api;

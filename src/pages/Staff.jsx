@@ -1,19 +1,13 @@
 // src/pages/Staff.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import "../ui/pubgame-theme.css";
-
-const API_BASE =
-  (typeof window !== "undefined" && (window._APP_API_BASE || window.APP_API_BASE)) ||
-  import.meta?.env?.VITE_APP_API_BASE ||
-  process.env?.REACT_APP_API_BASE ||
-  "";
+import { API_BASE } from "../lib/env"; // <- central env (no import.meta)
 
 function normalizeUkMobile(input) {
   if (!input) return "";
   let s = String(input).trim().replace(/\s+/g, "");
   if (s.startsWith("+44")) s = "0" + s.slice(3);
-  s = s.replace(/[^\d]/g, "");
-  return s;
+  return s.replace(/[^\d]/g, "");
 }
 function isUkMobile(s) {
   const n = normalizeUkMobile(s);
@@ -22,7 +16,10 @@ function isUkMobile(s) {
 const fmtGBP = (c) => (Math.round(c || 0) / 100).toFixed(2);
 
 async function jget(path) {
-  const r = await fetch(API_BASE + path, { credentials: "include" });
+  const r = await fetch(API_BASE + path, {
+    credentials: "include",
+    headers: withBearer(),
+  });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
@@ -30,8 +27,8 @@ async function jpost(path, body) {
   const r = await fetch(API_BASE + path, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {})
+    headers: { "Content-Type": "application/json", ...withBearer() },
+    body: JSON.stringify(body || {}),
   });
   if (!r.ok) {
     let msg = `HTTP ${r.status}`;
@@ -40,15 +37,19 @@ async function jpost(path, body) {
   }
   return r.json();
 }
+function withBearer() {
+  const t = localStorage.getItem("token");
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
 
 export default function Staff() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
-  const [products, setProducts] = useState([]);          // [{game_key,name,price_cents,active}]
-  const [poolByGame, setPoolByGame] = useState({});      // { game_key: jackpot_cents }
-  const [gameKey, setGameKey] = useState("");            // selected game
+  const [products, setProducts] = useState([]);     // [{game_key,name,price_cents,active}]
+  const [poolByGame, setPoolByGame] = useState({}); // { game_key: jackpot_cents }
+  const [gameKey, setGameKey] = useState("");
   const [qty, setQty] = useState(1);
   const [mobile, setMobile] = useState("");
   const [note, setNote] = useState("");
@@ -60,13 +61,12 @@ export default function Staff() {
       try {
         const dash = await jget("/api/dashboard");
         const active = (dash.products || []).filter(p => p.active);
-        const poolsArr = await jget("/api/admin/pools");
-        const map = {};
-        (poolsArr || []).forEach(p => { map[p.game_key] = p.jackpot_cents || 0; });
-
+        // if you have a /api/admin/pools endpoint, prefer that; otherwise derive 0
+        const poolsMap = {};
+        (dash.pools || []).forEach(p => { poolsMap[p.game_key] = p.jackpot_cents || 0; });
         if (alive) {
           setProducts(active);
-          setPoolByGame(map);
+          setPoolByGame(poolsMap);
           if (active.length && !gameKey) setGameKey(active[0].game_key);
         }
       } catch (e) {
@@ -101,15 +101,9 @@ export default function Staff() {
       if (note) body.note = note.slice(0, 120);
 
       const out = await jpost("/api/staff/entry", body);
-      // update local jackpot view
       setPoolByGame(prev => ({ ...prev, [gameKey]: out.jackpot_cents || potCents }));
-      setOk(
-        `Added ${out.quantity} ticket(s) to ${selected?.name || gameKey}. `
-        + `New jackpot: £${fmtGBP(out.jackpot_cents)}`
-      );
-      setQty(1);
-      setMobile("");
-      setNote("");
+      setOk(`Added ${out.quantity} ticket(s). New jackpot: £${fmtGBP(out.jackpot_cents)}`);
+      setQty(1); setMobile(""); setNote("");
     } catch (e) {
       setErr(e.message || "Failed to add entry");
     }
@@ -119,9 +113,7 @@ export default function Staff() {
     <div className="pg-wrap">
       <div className="card max">
         <h1 className="page-title">Staff – Manual Entries</h1>
-        <p style={{ marginTop: 0 }}>
-          Add tickets for customers without a phone. This increments the <strong>selected game’s</strong> jackpot and session count.
-        </p>
+        <p>Add tickets for customers without a phone. This increments the selected game’s jackpot and session count.</p>
 
         {loading && <div className="alert">Loading…</div>}
         {err && <div className="alert error">{err}</div>}
@@ -146,32 +138,17 @@ export default function Staff() {
 
             <div className="field">
               <label>Tickets</label>
-              <input
-                type="number"
-                min={1}
-                max={1000}
-                value={qty}
-                onChange={e => setQty(e.target.value)}
-              />
+              <input type="number" min={1} max={1000} value={qty} onChange={e => setQty(e.target.value)} />
             </div>
 
             <div className="field">
               <label>Customer mobile (optional)</label>
-              <input
-                placeholder="07XXXXXXXXX or +447XXXXXXXXX"
-                value={mobile}
-                onChange={e => setMobile(e.target.value)}
-              />
+              <input placeholder="07XXXXXXXXX or +447XXXXXXXXX" value={mobile} onChange={e => setMobile(e.target.value)} />
             </div>
 
             <div className="field">
               <label>Note (optional)</label>
-              <input
-                placeholder="e.g. Cash sale"
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                maxLength={120}
-              />
+              <input placeholder="e.g. Cash sale" value={note} onChange={e => setNote(e.target.value)} maxLength={120} />
             </div>
 
             <div className="toolbar">

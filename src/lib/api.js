@@ -1,8 +1,7 @@
 // src/lib/api.js
+// Use CRA/Webpack-style env var only, to avoid any import.meta access.
 const API_BASE =
-  import.meta.env.VITE_APP_API_BASE ||
-  process.env.REACT_APP_API_BASE ||
-  ''; // e.g. https://pub-game-backend.onrender.com
+  (process.env.REACT_APP_API_BASE || '').replace(/\/+$/, ''); // trim trailing slash
 
 export async function api(path, options = {}) {
   const token = localStorage.getItem('token');
@@ -14,7 +13,7 @@ export async function api(path, options = {}) {
       ...(options.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}), // Bearer fallback
     },
-    credentials: 'include', // send cookies for Safari/iOS
+    credentials: 'include', // send cookies for auth cookies
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -22,7 +21,6 @@ export async function api(path, options = {}) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} · ${txt || res.statusText}`);
   }
-  // may be empty body (204 etc.)
   try {
     return await res.json();
   } catch {
@@ -33,7 +31,6 @@ export async function api(path, options = {}) {
 export function setToken(token) {
   if (token) localStorage.setItem('token', token);
 }
-
 export function clearToken() {
   localStorage.removeItem('token');
 }

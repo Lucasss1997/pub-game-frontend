@@ -13,8 +13,7 @@ const toPounds = (cents) => (Number.isFinite(cents) ? (cents / 100).toFixed(2) :
 const toCents = (str) => {
   const s = String(str ?? "").trim().replace(/[£,\s]/g, "");
   if (!s || s === ".") return 0;
-  const m = s.match(/^\d+(\.\d{0,2})?$/);
-  if (!m) throw new Error("Enter a money value like 2, 2.5, 2.50");
+  if (!/^\d+(\.\d{0,2})?$/.test(s)) throw new Error("Enter a money value like 2, 2.5, 2.50");
   return Math.round(parseFloat(s) * 100);
 };
 
@@ -30,7 +29,7 @@ export default function Admin() {
   const [error, setError]     = useState("");
   const [diag, setDiag]       = useState(null);
 
-  // local state grouped by game
+  // local state by game
   const [jackpots, setJackpots] = useState({ crack: 0, box: 0 });
   const [products, setProducts] = useState({
     crack: { game_key: "crack", name: "£1 Standard Entry", price_cents: 100, active: true },
@@ -44,12 +43,10 @@ export default function Admin() {
         setLoading(true);
         setError("");
 
-        // NEW: fetch everything the admin page needs
         const data = await api.get("/api/admin/config");
 
         if (!mounted) return;
 
-        // productsByGame: { crack: {...}, box: {...} }
         const pb = data.productsByGame || {};
         const jb = data.jackpotsByGame || {};
 
@@ -79,7 +76,6 @@ export default function Admin() {
     try {
       setError("");
       const p = products[gameKey];
-      // validate/convert price to cents
       const price_cents = toCents(toPounds(p.price_cents)); // normalize
       const body = { products: [{ ...p, game_key: gameKey, price_cents }] };
       await api.post("/api/admin/products", body);
@@ -114,13 +110,16 @@ export default function Admin() {
           <button className="btn ghost" onClick={() => navigate("/dashboard")}>Back to dashboard</button>
           <button className="btn ghost" onClick={() => navigate("/enter/preview")}>New game</button>
           <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
-          <button className="btn solid" onClick={() => { localStorage.removeItem("token"); navigate("/login"); }}>Logout</button>
+          <button
+            className="btn solid"
+            onClick={() => { localStorage.removeItem("token"); navigate("/login"); }}
+          >
+            Logout
+          </button>
         </div>
 
-        {error && <div className="alert error"> {error} </div>}
-        {diag && (
-          <pre className="diag">{JSON.stringify(diag, null, 2)}</pre>
-        )}
+        {error && <div className="alert error">{error}</div>}
+        {diag && <pre className="diag">{JSON.stringify(diag, null, 2)}</pre>}
       </div>
 
       {loading ? (
@@ -130,35 +129,12 @@ export default function Admin() {
           {GAMES.map(({ key, title }) => {
             const p = products[key];
             const j = jackpots[key];
+
             return (
               <div key={key} className="admin-card">
                 <h2 className="section-title">{title}</h2>
 
-                {/* Jackpot (per-game) */}
-                <div className="field">
-                  <span>Jackpot (£)</span>
-                  <input
-                    inputMode="decimal"
-                    value={toPounds(j)}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      // store as cents in state, tolerate in-progress typing
-                      const safe = v.replace(/[^\d.]/g, "");
-                      const partsOk = /^\d*\.?\d{0,2}$/.test(safe);
-                      if (partsOk) {
-                        const cents = safe ? Math.round(parseFloat(safe) * 100) : 0;
-                        setJackpots((prev) => ({ ...prev, [key]: cents }));
-                      }
-                    }}
-                  />
-                </div>
-                <div className="actions">
-                  <button className="btn solid" onClick={() => handleSaveJackpot(key)}>Save jackpot</button>
-                </div>
-
-                <hr style={{ border: 0, borderTop: "2px dashed #7a2dda55", margin: "12px 0" }} />
-
-                {/* Single product editor per game */}
+                {/* Product first */}
                 <div className="field">
                   <span>Product name</span>
                   <input
@@ -192,8 +168,29 @@ export default function Admin() {
                   </select>
                 </div>
 
-                <div className="actions">
+                <div className="actions" style={{ marginBottom: 12 }}>
                   <button className="btn solid" onClick={() => handleSaveProduct(key)}>Save</button>
+                </div>
+
+                <hr style={{ border: 0, borderTop: "2px dashed #7a2dda55", margin: "12px 0" }} />
+
+                {/* Jackpot UNDER the product */}
+                <div className="field">
+                  <span>Jackpot (£)</span>
+                  <input
+                    inputMode="decimal"
+                    value={toPounds(j)}
+                    onChange={(e) => {
+                      const safe = e.target.value.replace(/[^\d.]/g, "");
+                      if (/^\d*\.?\d{0,2}$/.test(safe)) {
+                        const cents = safe ? Math.round(parseFloat(safe) * 100) : 0;
+                        setJackpots((prev) => ({ ...prev, [key]: cents }));
+                      }
+                    }}
+                  />
+                </div>
+                <div className="actions">
+                  <button className="btn solid" onClick={() => handleSaveJackpot(key)}>Save jackpot</button>
                 </div>
               </div>
             );

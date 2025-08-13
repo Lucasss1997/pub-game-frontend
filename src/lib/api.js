@@ -63,9 +63,9 @@ export const post = (p, body, o = {})   => request(p, { ...o, method: "POST", bo
 export const put  = (p, body, o = {})   => request(p, { ...o, method: "PUT",  body });
 export const del  = (p, o = {})         => request(p, { ...o, method: "DELETE" });
 
-function apiCallable(path, opts) {       // default-callable form
+function apiCallable(path, opts) {
   return request(path, opts);
 }
 
-export const api = apiCallable;          // named export
-export default apiCallable;               // default export
+export const api = apiCallable;  // ✅ named export
+export default apiCallable;      // ✅ default export

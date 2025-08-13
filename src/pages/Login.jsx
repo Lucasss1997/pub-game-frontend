@@ -1,69 +1,63 @@
 // src/pages/Login.jsx
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import '../ui/pubgame-theme.css';
 
 export default function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('new@pub.com');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
     setErr('');
-    setBusy(true);
     try {
-      const r = await api.post('/api/login', { email, password });
-      if (r?.token) api.setToken(r.token);
-      window.location.assign('/dashboard');
+      const { token } = await api.post('/api/login', { email, password });
+      if (token) localStorage.setItem('token', token); // also keep it in localStorage
+      navigate('/dashboard');
     } catch (e2) {
-      setErr(e2?.response?.error || 'Login failed.');
-    } finally {
-      setBusy(false);
+      setErr(e2.message || 'Login failed');
     }
   }
 
-  async function ensureUser() {
-    // one-tap helper to create the account if it doesn't exist
+  async function ensureUserOnce() {
     setErr('');
-    setBusy(true);
     try {
-      await api.post('/api/dev/ensure-user', { email, password: password || 'password123', pub_id: 1 });
+      await api.post('/api/dev/ensure-user', { email, password });
       setErr('User ensured. Try logging in again.');
     } catch (e2) {
-      setErr(e2?.response?.error || 'Could not ensure user');
-    } finally {
-      setBusy(false);
+      setErr(e2.message || 'Ensure failed');
     }
   }
 
   return (
-    <div className="login-page">
-      <h1>Sign In</h1>
-      {err && <div className="alert error">{err}</div>}
-      <form onSubmit={onSubmit} className="card" style={{ maxWidth: 420 }}>
+    <div className="pg-screen">
+      <form className="pg-card" onSubmit={onSubmit}>
+        <h1 className="pg-title">Sign In</h1>
+        {err && <div className="pg-alert">{err}</div>}
         <input
-          className="input"
+          className="pg-input"
           type="email"
           placeholder="Email"
           value={email}
-          onChange={e=>setEmail(e.target.value)}
-          required
+          onChange={(e) => setEmail(e.target.value)}
+          autoCapitalize="none"
         />
         <input
-          className="input"
+          className="pg-input"
           type="password"
           placeholder="Password"
           value={password}
-          onChange={e=>setPassword(e.target.value)}
-          required
+          onChange={(e) => setPassword(e.target.value)}
         />
-        <button className="btn" disabled={busy} type="submit">
-          {busy ? 'Logging in…' : 'Login'}
-        </button>
-        <button type="button" className="btn ghost" onClick={ensureUser} disabled={busy} style={{ marginTop: 8 }}>
-          Ensure user (once)
-        </button>
+        <div className="pg-actions">
+          <button className="pg-button" type="submit">Login</button>
+          <button type="button" className="pg-button ghost" onClick={ensureUserOnce}>
+            Ensure user (once)
+          </button>
+        </div>
       </form>
     </div>
   );

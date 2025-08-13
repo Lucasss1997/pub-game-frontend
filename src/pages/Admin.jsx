@@ -1,159 +1,154 @@
 // src/pages/Admin.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
-import "./admin.css";
+import { api } from "../lib/api";          // { get, post } helper
+import "../ui/pubgame-theme.css";          // your theme
+import "./admin.css";                      // your admin styles (if present)
+
+const GAME_TITLES = {
+  crack_safe: "Crack the Safe",
+  whats_in_the_box: "What's in the Box",
+  raffle: "Raffle",
+};
+
+function poundsFromCents(cents) {
+  const n = Number(cents || 0);
+  return (n / 100).toFixed(2);
+}
+
+function centsFromPounds(input) {
+  if (input === null || input === undefined) return 0;
+  const s = String(input).trim().replace(/[£,\s]/g, "");
+  if (!s) return 0;
+  const n = Number(s);
+  if (Number.isNaN(n)) return 0;
+  return Math.round(n * 100);
+}
 
 export default function Admin() {
-  const navigate = useNavigate();
+  const nav = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [diag, setDiag] = useState(null);
+  const [diag, setDiag] = useState("");
+  const [jackpotPounds, setJackpotPounds] = useState("0.00");
 
-  // products shown on the page (array of objects)
+  // flat products from API
   const [products, setProducts] = useState([]);
-  // single jackpot field (backend expects one value today)
-  const [jackpot, setJackpot] = useState("");
 
-  // --- helpers ----
-  const centsToPounds = (cents) =>
-    typeof cents === "number" ? (cents / 100).toFixed(2) : "0.00";
+  // ----- derived: grouped by game_key with a stable order
+  const grouped = useMemo(() => {
+    const g = {};
+    for (const p of products) {
+      const key = p.game_key || "other";
+      if (!g[key]) g[key] = [];
+      g[key].push(p);
+    }
+    // Optional: sort products within each game by price asc
+    Object.values(g).forEach(list =>
+      list.sort((a, b) => (a.price_cents || 0) - (b.price_cents || 0))
+    );
+    return g;
+  }, [products]);
 
-  const poundsToString = (v) => {
-    if (v === null || v === undefined) return "";
-    const s = String(v).trim();
-    return s === "" ? "" : s;
-  };
-
-  const parsePounds = (s) => {
-    const cleaned = String(s || "")
-      .trim()
-      .replace(/[£,\s]/g, "")
-      .replace(/p$/i, "");
-    if (!cleaned) return "0.00";
-    // keep at most 2 dp
-    const num = Number(cleaned);
-    if (!Number.isFinite(num)) return "0.00";
-    return num.toFixed(2);
-  };
-
-  // --- load initial data (safe + compatible with current backend) ---
   useEffect(() => {
-    let mounted = true;
-
-    async function load() {
-      setLoading(true);
-      setErr("");
+    (async () => {
       try {
-        // Use /api/dashboard (auth) as the reliable source
-        const dash = await api.get("/api/dashboard");
+        setLoading(true);
+        setErr("");
 
-        const prodRows = Array.isArray(dash?.products) ? dash.products : [];
+        // current backend returns { products, jackpot_cents }
+        const data = await api.get("/api/admin/products");
 
-        // Normalize product rows for the form
-        const norm = prodRows.map((p) => ({
+        // normalise product fields
+        const normalised = (data?.products || []).map((p) => ({
+          id: p.id ?? null,
           game_key: p.game_key,
           name: p.name || "",
-          price: centsToPounds(p.price_cents ?? 0),
+          price_cents: Number(p.price_cents || 0),
           active: !!p.active,
         }));
 
-        if (mounted) {
-          setProducts(norm);
-          const jp = dash?.stats?.jackpot_cents ?? 0;
-          setJackpot(centsToPounds(jp));
-          setDiag({
-            products: norm.length,
-            jackpot_cents: jp ?? 0,
-          });
-        }
-      } catch (e) {
-        if (mounted) {
-          setErr(prettyErr(e));
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
+        setProducts(normalised);
+        setJackpotPounds(poundsFromCents(data?.jackpot_cents ?? 0));
 
-    load();
-    return () => {
-      mounted = false;
-    };
+        setDiag(JSON.stringify({ products: normalised.length, jackpot_cents: data?.jackpot_cents ?? 0 }, null, 2));
+      } catch (e) {
+        setErr(readableError(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  function prettyErr(e) {
-    if (!e) return "Unknown error";
-    if (typeof e === "string") return e;
-    if (e.message) return e.message;
+  const saveJackpot = async () => {
     try {
-      return JSON.stringify(e);
-    } catch {
-      return "Error";
-    }
-  }
-
-  // --- actions ---
-  async function onSaveJackpot() {
-    setErr("");
-    try {
-      const body = { jackpot: parsePounds(jackpot) };
-      await api.post("/api/admin/jackpot", body); // backend expects one value today
-      alert("Jackpot saved");
+      setErr("");
+      const resp = await api.post("/api/admin/jackpot", {
+        jackpot: jackpotPounds,
+      });
+      setDiag((d) => d + `\nSaved jackpot: ${JSON.stringify(resp)}`);
     } catch (e) {
-      setErr(prettyErr(e));
+      setErr(readableError(e));
     }
-  }
+  };
 
-  async function onSaveProduct(idx) {
-    setErr("");
+  // save a single edited product row
+  const saveProduct = async (idx, edited) => {
     try {
-      const p = products[idx];
-      const payload = [
-        {
-          game_key: p.game_key,
-          name: p.name,
-          price: parsePounds(p.price),
-          active: !!p.active,
-        },
-      ];
-      await api.post("/api/admin/products", { products: payload });
-      alert(`Saved “${p.name || p.game_key}”`);
-    } catch (e) {
-      setErr(prettyErr(e));
-    }
-  }
+      setErr("");
+      // update local state immediately
+      setProducts((prev) => {
+        const copy = [...prev];
+        copy[idx] = edited;
+        return copy;
+      });
 
-  function updateProduct(idx, patch) {
+      // backend expects an array on /api/admin/products
+      await api.post("/api/admin/products", {
+        products: [
+          {
+            id: edited.id ?? null,
+            game_key: edited.game_key,
+            name: edited.name,
+            price: poundsFromCents(edited.price_cents),
+            active: !!edited.active,
+          },
+        ],
+      });
+      setDiag((d) => d + `\nSaved product: ${edited.name}`);
+    } catch (e) {
+      setErr(readableError(e));
+    }
+  };
+
+  // helpers to edit a particular product
+  const setField = (idx, field, value) => {
     setProducts((prev) => {
-      const next = prev.slice();
-      next[idx] = { ...next[idx], ...patch };
-      return next;
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: value };
+      return copy;
     });
-  }
+  };
 
-  // --- UI ---
   return (
     <div className="admin-wrap">
       <div className="admin-card">
-        <h1 className="admin-title">Admin</h1>
-
-        <div className="actions">
-          <button className="btn ghost" onClick={() => navigate("/dashboard")}>
+        <div className="actions" style={{ flexWrap: "wrap" }}>
+          <button className="btn ghost" onClick={() => nav("/dashboard")}>
             Back to Dashboard
           </button>
-          <button className="btn ghost" onClick={() => navigate("/enter/1/crack_safe")}>
+          <button className="btn ghost" onClick={() => nav("/pricing")}>
             New Game
           </button>
-          <button className="btn ghost" onClick={() => navigate("/billing")}>
+          <button className="btn ghost" onClick={() => nav("/billing")}>
             Billing
           </button>
           <button
-            className="btn"
+            className="btn solid"
             onClick={() => {
               localStorage.removeItem("token");
-              navigate("/login");
+              nav("/login");
             }}
             style={{ marginLeft: "auto" }}
           >
@@ -161,93 +156,143 @@ export default function Admin() {
           </button>
         </div>
 
-        {err && (
-          <div className="alert error">HTTP • {err}</div>
-        )}
+        <h1 className="admin-title">Admin</h1>
+
+        {err ? (
+          <div className="alert error">{err}</div>
+        ) : null}
+
+        <button
+          className="btn ghost"
+          onClick={() =>
+            setDiag(
+              JSON.stringify(
+                {
+                  products: products.length,
+                  sample: products.slice(0, 2),
+                },
+                null,
+                2
+              )
+            )
+          }
+        >
+          Run diagnostics
+        </button>
 
         {diag && (
-          <pre className="diag">{JSON.stringify(diag, null, 2)}</pre>
+          <pre className="diag">{diag}</pre>
         )}
       </div>
 
-      {/* Jackpot section (current backend = one jackpot) */}
+      {/* Jackpot (pub-level; per-game can be added when server exposes it) */}
       <div className="admin-card">
         <h2 className="section-title">Jackpot</h2>
         <div className="field">
           <span>Jackpot (£)</span>
           <input
             inputMode="decimal"
+            value={jackpotPounds}
+            onChange={(e) => setJackpotPounds(e.target.value)}
             placeholder="0.00"
-            value={poundsToString(jackpot)}
-            onChange={(e) => setJackpot(e.target.value)}
           />
         </div>
         <div className="actions">
-          <button className="btn" disabled={loading} onClick={onSaveJackpot}>
-            Save Jackpot
+          <button className="btn solid" onClick={saveJackpot}>
+            Save jackpot
           </button>
         </div>
       </div>
 
-      {/* Products */}
-      <div className="admin-card">
-        <h2 className="section-title">Crack the Safe</h2>
-        {loading && <div>Loading…</div>}
-        {!loading && products.length === 0 && (
-          <div>No products configured yet.</div>
-        )}
-        {!loading &&
-          products.map((p, i) => (
-            <div
-              key={p.game_key || i}
-              style={{
-                borderTop: "1px dashed #3b1bb8",
-                paddingTop: 10,
-                marginTop: 10,
-              }}
-            >
-              <div className="field">
-                <span>Product name</span>
-                <input
-                  value={p.name}
-                  onChange={(e) =>
-                    updateProduct(i, { name: e.target.value })
-                  }
-                />
-              </div>
+      {/* Render a section for each game_key present */}
+      {Object.keys(grouped).map((gameKey) => {
+        const title = GAME_TITLES[gameKey] || "Other";
+        return (
+          <div className="admin-card" key={gameKey}>
+            <h2 className="section-title">{title}</h2>
 
-              <div className="field">
-                <span>Ticket price (£)</span>
-                <input
-                  inputMode="decimal"
-                  value={p.price}
-                  onChange={(e) =>
-                    updateProduct(i, { price: e.target.value })
-                  }
-                />
-              </div>
+            {(grouped[gameKey] || []).map((row) => {
+              const idx = products.findIndex(
+                (p) => p === row // same object instance
+              );
+              const priceStr = poundsFromCents(row.price_cents);
 
-              <div className="field">
-                <span>Active</span>
-                <select
-                  value={p.active ? "yes" : "no"}
-                  onChange={(e) =>
-                    updateProduct(i, { active: e.target.value === "yes" })
-                  }
+              return (
+                <div
+                  key={`${gameKey}-${row.id ?? row.name}-${idx}`}
+                  style={{ borderTop: "2px dashed #5c36e6", paddingTop: 12, marginTop: 12 }}
                 >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </div>
+                  <div className="field">
+                    <span>Product name</span>
+                    <input
+                      value={row.name}
+                      onChange={(e) => setField(idx, "name", e.target.value)}
+                      placeholder="Name shown to players"
+                    />
+                  </div>
 
-              <div className="actions">
-                <button className="btn" onClick={() => onSaveProduct(i)}>
-                  Save
-                </button>
-              </div>
-            </div>
-          ))}
-      </div>
+                  <div className="field">
+                    <span>Ticket price (£)</span>
+                    <input
+                      inputMode="decimal"
+                      value={priceStr}
+                      onChange={(e) =>
+                        setField(idx, "price_cents", centsFromPounds(e.target.value))
+                      }
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div className="field">
+                    <span>Active</span>
+                    <select
+                      value={row.active ? "yes" : "no"}
+                      onChange={(e) =>
+                        setField(idx, "active", e.target.value === "yes")
+                      }
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+
+                  <div className="actions">
+                    <button
+                      className="btn solid"
+                      onClick={() => saveProduct(idx, products[idx])}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {loading && (
+        <div className="admin-card">
+          <div>Loading…</div>
+        </div>
+      )}
     </div>
   );
+}
+
+function readableError(e) {
+  if (!e) return "Error";
+  if (typeof e === "string") return e;
+  if (e?.response?.status) {
+    const body = e.response.data ?? e.response.statusText ?? "";
+    try {
+      const maybe = typeof body === "string" ? JSON.parse(body) : body;
+      if (maybe?.error) return `HTTP ${e.response.status} · ${maybe.error}`;
+    } catch {
+      /* ignore */
+    }
+    return `HTTP ${e.response.status} · ${body || "Request failed"}`;
+  }
+  if (e?.message) return e.message;
+  return "Request failed";
 }

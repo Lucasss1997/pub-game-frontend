@@ -16,6 +16,10 @@ import CrackTheSafe from "./pages/CrackTheSafe";
 import WhatsInTheBox from "./pages/WhatsInTheBox";
 import Raffle from "./pages/Raffle";
 import Enter from "./pages/Enter";
+import Staff from './pages/Staff';
+
+// ...
+<Route path="/staff" element={<PrivateRoute><Staff/></PrivateRoute>} />
 
 /* Simple auth helper */
 const isAuthed = () => !!localStorage.getItem("token");

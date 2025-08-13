@@ -1,40 +1,41 @@
 // src/lib/api.js
-const BASE = (import.meta?.env?._APP_API_BASE) || process.env._APP_API_BASE || '';
+const API_BASE =
+  process.env._APP_API_BASE ||
+  process.env.REACT_APP_API_BASE ||
+  'https://pub-game-backend.onrender.com';
 
-function getToken() {
-  try { return localStorage.getItem('token') || ''; } catch { return ''; }
+function authHeader() {
+  const t = localStorage.getItem('token');
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
-function setToken(tok) {
-  try { tok ? localStorage.setItem('token', tok) : localStorage.removeItem('token'); } catch {}
-}
-async function request(path, opts = {}) {
-  const headers = new Headers(opts.headers || {});
-  headers.set('Content-Type', 'application/json');
-  const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${BASE}${path}`, {
-    method: opts.method || 'GET',
-    headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-    credentials: 'include',
-  });
-
-  let data = null;
-  try { data = await res.json(); } catch { /* ignore */ }
-
-  if (!res.ok || (data && data.ok === false)) {
-    const error = new Error(data?.error || `HTTP ${res.status}`);
-    error.response = data;
-    error.status = res.status;
-    throw error;
+async function handle(res) {
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch {}
+  if (!res.ok) {
+    const msg = data?.error || `HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
-  return data ?? { ok:true };
+  return data;
 }
 
 export const api = {
-  get: (p, o) => request(p, { ...o, method:'GET' }),
-  post: (p, body, o) => request(p, { ...o, method:'POST', body }),
-  setToken,
-  getToken,
+  get: (path) =>
+    fetch(API_BASE + path, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      credentials: 'include', // include cookie if it exists
+    }).then(handle),
+
+  post: (path, body) =>
+    fetch(API_BASE + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify(body || {}),
+      credentials: 'include',
+    }).then(handle),
 };

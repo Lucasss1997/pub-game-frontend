@@ -1,39 +1,40 @@
 // src/lib/api.js
-const BASE =
-  process.env.REACT_APP_API_BASE ||
-  process.env._APP_API_BASE || // your current .env key
-  "https://pub-game-backend.onrender.com"; // fallback
+const BASE = (import.meta?.env?._APP_API_BASE) || process.env._APP_API_BASE || '';
 
-async function request(path, { method = "GET", body, headers } = {}) {
+function getToken() {
+  try { return localStorage.getItem('token') || ''; } catch { return ''; }
+}
+function setToken(tok) {
+  try { tok ? localStorage.setItem('token', tok) : localStorage.removeItem('token'); } catch {}
+}
+async function request(path, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  headers.set('Content-Type', 'application/json');
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
   const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(headers || {}),
-    },
-    // THIS is the critical line: send cookies on cross‑site requests
-    credentials: "include",
-    body: body ? JSON.stringify(body) : undefined,
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    credentials: 'include',
   });
 
-  // If backend returns non‑JSON (e.g., 401 with html), avoid JSON parse blowups
-  const text = await res.text();
-  let data;
-  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  let data = null;
+  try { data = await res.json(); } catch { /* ignore */ }
 
-  if (!res.ok) {
-    const msg = data?.error || `HTTP ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.payload = data;
-    throw err;
+  if (!res.ok || (data && data.ok === false)) {
+    const error = new Error(data?.error || `HTTP ${res.status}`);
+    error.response = data;
+    error.status = res.status;
+    throw error;
   }
-  return data;
+  return data ?? { ok:true };
 }
 
 export const api = {
-  get:  (p)        => request(p),
-  post: (p, body)  => request(p, { method: "POST", body }),
-  put:  (p, body)  => request(p, { method: "PUT",  body }),
-  del:  (p, body)  => request(p, { method: "DELETE", body }),
+  get: (p, o) => request(p, { ...o, method:'GET' }),
+  post: (p, body, o) => request(p, { ...o, method:'POST', body }),
+  setToken,
+  getToken,
 };

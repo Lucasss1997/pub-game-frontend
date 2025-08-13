@@ -1,168 +1,128 @@
-// src/pages/Dashboard.jsx
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api } from '../lib/api';            // uses your _APP_API_BASE
-import '../ui/pubgame-theme.css';            // keep your theme
+import { api } from '../lib/api';
 
 export default function Dashboard() {
-  const nav = useNavigate();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [data, setData] = useState(null);
+  const [pub, setPub] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [products, setProducts] = useState([]);
 
   async function load() {
-    setLoading(true);
     setErr('');
+    setLoading(true);
     try {
-      // Try helper first
-      const res = await api.get('/api/dashboard');
-      setData(res);
+      const res = await api.get('/api/dashboard', { credentials: 'include' });
+      // Be defensive about shapes coming back
+      const data = res || {};
+      setPub(data.pub || null);
+      setStats(data.stats || null);
+      setProducts(Array.isArray(data.products) ? data.products : []);
     } catch (e) {
-      // If helper misconfigured, fall back to plain fetch
-      try {
-        const base = import.meta?.env?._APP_API_BASE || (window._APP_API_BASE ?? '');
-        const r = await fetch(`${base}/api/dashboard`, { credentials: 'include' });
-        if (!r.ok) {
-          if (r.status === 401) {
-            // not logged in → send to login
-            nav('/login');
-            return;
-          }
-          throw new Error(`HTTP ${r.status}`);
-        }
-        setData(await r.json());
-      } catch (e2) {
-        setErr(e2.message || 'Failed to load dashboard');
-      }
+      setErr(
+        (e && (e.message || e.error || e.statusText)) ||
+        'Could not load dashboard.'
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); }, []);
 
-  function logout() {
-    try { localStorage.removeItem('token'); } catch {}
-    nav('/login');
+  async function logout() {
+    try { await api.post('/api/logout', {}, { credentials: 'include' }); } catch {}
+    localStorage.removeItem('token');
+    window.location.href = '/login';
   }
 
-  const s = styles;
   return (
-    <div style={s.wrap}>
-      <header style={s.header}>
-        <h1 style={s.h1}>Dashboard</h1>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button style={s.ghostBtn} onClick={() => nav('/')}>Home</button>
-          <button style={s.ghostBtn} onClick={() => nav('/billing')}>Billing</button>
-          <button style={s.ghostBtn} onClick={logout}>Logout</button>
-        </div>
-      </header>
+    <div className="pg-wrap">
+      <div className="pillnav" style={{ justifyContent: 'flex-end', gap: 12 }}>
+        <a className="btn small ghost" href="/">HOME</a>
+        <a className="btn small ghost" href="/billing">BILLING</a>
+        <button className="btn small ghost" onClick={logout}>LOGOUT</button>
+      </div>
 
-      {loading && <div style={s.card}>Loading…</div>}
+      <h1>Dashboard</h1>
 
-      {!!err && (
-        <div style={{ ...s.card, ...s.cardError }}>
-          {err}
-          <div><button style={s.btn} onClick={load}>Retry</button></div>
+      {err && (
+        <div className="card" style={{ background:'#ffd2de', borderColor:'#b31432', color:'#7a1030' }}>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>{String(err)}</div>
+          <button className="btn small" onClick={load}>RETRY</button>
         </div>
       )}
 
-      {!loading && !err && data && (
+      {loading && <div className="card"><strong>Loading…</strong></div>}
+
+      {!loading && !err && (
         <>
-          {/* Pub summary */}
-          <section style={s.card}>
-            <h2 style={s.h2}>Your Pub</h2>
-            <div style={s.kv}><span style={s.k}>Name</span><span>{data.pub?.name ?? '—'}</span></div>
-            <div style={s.kv}><span style={s.k}>City</span><span>{data.pub?.city ?? '—'}</span></div>
-            <div style={s.kv}><span style={s.k}>Address</span><span>{data.pub?.address ?? '—'}</span></div>
-          </section>
+          <div className="card">
+            <div className="section-title">Your Pub</div>
+            {pub ? (
+              <div className="grid cols-2">
+                <div>
+                  <div style={{ fontWeight: 900 }}>{pub.name}</div>
+                  <div className="meta">{pub.city}</div>
+                  <div className="meta">{pub.address}</div>
+                </div>
+                <div>
+                  <div className="meta">License expires</div>
+                  <div style={{ fontWeight: 900 }}>{pub.expires_on || '—'}</div>
+                </div>
+              </div>
+            ) : <div className="meta">No pub on file.</div>}
+          </div>
 
-          {/* Games */}
-          <section style={s.grid}>
-            <div style={s.card}>
-              <h3 style={s.h3}>Crack the Safe</h3>
-              <p style={s.p}>Guess the 3‑digit code to win!</p>
-              <button style={s.btn} onClick={() => nav('/crack-the-safe')}>Play</button>
+          <div className="grid cols-2">
+            <div className="card">
+              <div className="section-title">Crack the Safe</div>
+              <div className="meta">
+                Ticket: £{fmtPrice(products.find(p => p.game_key==='crack_the_safe')?.price_cents)}
+              </div>
+              <div className="game-panel actions">
+                <a className="btn" href="/crack-the-safe">Play</a>
+              </div>
             </div>
-            <div style={s.card}>
-              <h3 style={s.h3}>What’s in the Box</h3>
-              <p style={s.p}>Pick the winning box!</p>
-              <button style={s.btn} onClick={() => nav('/whats-in-the-box')}>Play</button>
-            </div>
-          </section>
 
-          {/* Admin shortcuts */}
-          <section style={s.card}>
-            <h3 style={s.h3}>Admin</h3>
-            <p style={s.p}>Set ticket prices, toggle availability and jackpot.</p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button style={s.btn} onClick={() => nav('/admin')}>Open Admin</button>
-              <button style={s.ghostBtn} onClick={() => nav('/pricing')}>Pricing</button>
+            <div className="card">
+              <div className="section-title">What’s in the Box</div>
+              <div className="meta">
+                Ticket: £{fmtPrice(products.find(p => p.game_key==='whats_in_the_box')?.price_cents)}
+              </div>
+              <div className="game-panel actions">
+                <a className="btn" href="/whats-in-the-box">Play</a>
+              </div>
             </div>
-          </section>
+          </div>
+
+          <div className="card">
+            <div className="section-title">Stats</div>
+            {stats ? (
+              <div className="grid cols-3">
+                <Stat label="Players this week" value={stats.players_this_week} />
+                <Stat label="Prizes won" value={stats.prizes_won} />
+                <Stat label="Jackpot" value={`£${fmtPrice(stats.jackpot_cents)}`} />
+              </div>
+            ) : <div className="meta">No stats yet.</div>}
+          </div>
+          <div className="pg-spacer" />
         </>
       )}
     </div>
   );
 }
 
-const styles = {
-  wrap: {
-    padding: 20,
-    background: '#e89117', // orange background
-    minHeight: '100vh',
-    boxSizing: 'border-box',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    margin: '8px 0 16px',
-  },
-  h1: { margin: 0, color: '#26008a', fontSize: 32, fontWeight: 800 },
-  h2: { margin: '0 0 8px', color: '#26008a', fontSize: 24, fontWeight: 800 },
-  h3: { margin: '0 0 8px', color: '#26008a', fontSize: 20, fontWeight: 800 },
-  p: { margin: '0 0 12px', color: '#2b1b00' },
-  card: {
-    background: '#f7c35a',
-    borderRadius: 18,
-    boxShadow: '0 8px 0 #c97810',
-    padding: 16,
-    marginBottom: 16,
-    border: '3px solid #4c23c8',
-  },
-  cardError: {
-    background: '#ffd1d6',
-    color: '#7a0022',
-    borderColor: '#7a0022',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 16,
-    marginBottom: 16,
-  },
-  btn: {
-    background: '#4c23c8',
-    color: 'white',
-    border: '3px solid #2b0ea7',
-    borderRadius: 12,
-    padding: '10px 14px',
-    fontWeight: 700,
-  },
-  ghostBtn: {
-    background: '#f7c35a',
-    color: '#26008a',
-    border: '3px solid #4c23c8',
-    borderRadius: 12,
-    padding: '8px 12px',
-    fontWeight: 700,
-  },
-  kv: {
-    display: 'flex',
-    gap: 12,
-    alignItems: 'baseline',
-    margin: '4px 0',
-  },
-  k: { minWidth: 80, color: '#26008a', fontWeight: 700 },
-};
+function Stat({ label, value }) {
+  return (
+    <div className="card" style={{ padding: 16 }}>
+      <div className="meta">{label}</div>
+      <div style={{ fontWeight: 900, fontSize: 20 }}>{value ?? '—'}</div>
+    </div>
+  );
+}
+
+function fmtPrice(cents) {
+  const n = Number.isFinite(+cents) ? +cents : 0;
+  return (n / 100).toFixed(2);
+}

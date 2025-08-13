@@ -1,3 +1,4 @@
+// src/App.jsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
@@ -16,10 +17,7 @@ import CrackTheSafe from "./pages/CrackTheSafe";
 import WhatsInTheBox from "./pages/WhatsInTheBox";
 import Raffle from "./pages/Raffle";
 import Enter from "./pages/Enter";
-import Staff from './pages/Staff';
-
-// ...
-<Route path="/staff" element={<PrivateRoute><Staff/></PrivateRoute>} />
+import Staff from "./pages/Staff";
 
 /* Simple auth helper */
 const isAuthed = () => !!localStorage.getItem("token");
@@ -31,11 +29,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public */}
         <Route path="/" element={<Home />} />
-
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
+        {/* Auth-only */}
         <Route
           path="/dashboard"
           element={
@@ -68,6 +67,14 @@ export default function App() {
             </Private>
           }
         />
+        <Route
+          path="/staff"
+          element={
+            <Private>
+              <Staff />
+            </Private>
+          }
+        />
 
         {/* Public player routes (QR-ready) */}
         <Route path="/enter/:pubId/:gameKey" element={<Enter />} />
@@ -75,6 +82,7 @@ export default function App() {
         <Route path="/whats-in-the-box" element={<WhatsInTheBox />} />
         <Route path="/raffle" element={<Raffle />} />
 
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

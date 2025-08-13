@@ -1,65 +1,62 @@
 // src/lib/api.js
+// Lightweight fetch-based API helper with both named and default exports.
+// Works with your existing src/lib/env.js (API_BASE).
 
-let token = null;
+import { API_BASE } from './env';
 
-const setToken = (newToken) => {
-  token = newToken;
-};
+const baseURL = (API_BASE || '').replace(/\/+$/, '');
 
-const clearToken = () => {
-  token = null;
-};
+let authToken = localStorage.getItem('token') || '';
 
-const getToken = () => token;
+function urlFor(path) {
+  const p = String(path || '').trim();
+  if (/^https?:/i.test(p)) return p;           // absolute
+  return baseURL + (p.startsWith('/') ? p : '/' + p);
+}
 
-const request = async (method, url, data) => {
-  const options = {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-    },
+async function request(method, path, body, opts = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(opts.headers || {}),
   };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-  if (token) {
-    options.headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(urlFor(path), {
+    method,
+    headers,
+    credentials: 'include', // keep cookies if you use them
+    body: body == null ? undefined : JSON.stringify(body),
+    ...opts,
+  });
+
+  // Try to parse JSON; fallback to text
+  let data;
+  const text = await res.text();
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+  if (!res.ok) {
+    const err = new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
+  return data;
+}
 
-  if (data) {
-    options.body = JSON.stringify(data);
-  }
+// Named helpers
+export const get  = (path, opts)           => request('GET',    path, undefined, opts);
+export const post = (path, body, opts)      => request('POST',   path, body, opts);
+export const put  = (path, body, opts)      => request('PUT',    path, body, opts);
+export const del  = (path, opts)            => request('DELETE', path, undefined, opts);
 
-  const response = await fetch(url, options);
+// Token helpers
+export function setToken(token) {
+  authToken = token || '';
+  if (token) localStorage.setItem('token', token);
+  else localStorage.removeItem('token');
+}
+export function clearToken() { setToken(''); }
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "API request failed");
-  }
-
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-};
-
-const get = (url) => request("GET", url);
-const post = (url, data) => request("POST", url, data);
-const put = (url, data) => request("PUT", url, data);
-const del = (url) => request("DELETE", url);
-
-// The api object that can be imported as default or named
-const api = {
-  get,
-  post,
-  put,
-  del,
-  setToken,
-  clearToken,
-  getToken,
-};
-
-// Default export
+// Also provide a default export for legacy imports like: import api from '../lib/api'
+const api = { get, post, put, del, setToken, clearToken };
 export default api;
-
-// Named export (so `{ api }` also works)
-export { api, get, post, put, del, setToken, clearToken, getToken };

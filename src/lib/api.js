@@ -1,62 +1,72 @@
 // src/lib/api.js
-// Lightweight fetch-based API helper with both named and default exports.
-// Works with your existing src/lib/env.js (API_BASE).
+// One tiny API client used everywhere. Works with both default and named imports.
 
 import { API_BASE } from './env';
 
-const baseURL = (API_BASE || '').replace(/\/+$/, '');
+let _token = localStorage.getItem('token') || '';
 
-let authToken = localStorage.getItem('token') || '';
-
-function urlFor(path) {
-  const p = String(path || '').trim();
-  if (/^https?:/i.test(p)) return p;           // absolute
-  return baseURL + (p.startsWith('/') ? p : '/' + p);
+export function setToken(t) {
+  _token = t || '';
+  if (_token) localStorage.setItem('token', _token);
+  else localStorage.removeItem('token');
 }
 
-async function request(method, path, body, opts = {}) {
+export function clearToken() {
+  setToken('');
+}
+
+function toUrl(path) {
+  // Allow absolute URLs; otherwise prefix with API_BASE
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = (API_BASE || '').replace(/\/+$/, '');
+  const p = String(path || '').replace(/^\/+/, '');
+  return `${base}/${p}`;
+}
+
+async function request(method, path, body) {
+  const url = toUrl(path);
+
   const headers = {
-    'Content-Type': 'application/json',
-    ...(opts.headers || {}),
+    'Accept': 'application/json',
   };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-  const res = await fetch(urlFor(path), {
-    method,
-    headers,
-    credentials: 'include', // keep cookies if you use them
-    body: body == null ? undefined : JSON.stringify(body),
-    ...opts,
-  });
+  const opts = { method, headers, credentials: 'include' };
 
-  // Try to parse JSON; fallback to text
-  let data;
+  if (body !== undefined && body !== null) {
+    headers['Content-Type'] = 'application/json';
+    opts.body = typeof body === 'string' ? body : JSON.stringify(body);
+  }
+
+  if (_token) {
+    headers['Authorization'] = `Bearer ${_token}`;
+  }
+
+  const res = await fetch(url, opts);
+
+  // Try to parse JSON, but allow empty bodies
   const text = await res.text();
+  let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
 
   if (!res.ok) {
-    const err = new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
+    const err = new Error(
+      (data && (data.message || data.error)) ||
+      `HTTP ${res.status}`
+    );
     err.status = res.status;
     err.data = data;
     throw err;
   }
+
   return data;
 }
 
-// Named helpers
-export const get  = (path, opts)           => request('GET',    path, undefined, opts);
-export const post = (path, body, opts)      => request('POST',   path, body, opts);
-export const put  = (path, body, opts)      => request('PUT',    path, body, opts);
-export const del  = (path, opts)            => request('DELETE', path, undefined, opts);
+export function get(path)    { return request('GET',    path); }
+export function post(path,b) { return request('POST',   path, b); }
+export function put(path,b)  { return request('PUT',    path, b); }
+export function del(path,b)  { return request('DELETE', path, b); }
 
-// Token helpers
-export function setToken(token) {
-  authToken = token || '';
-  if (token) localStorage.setItem('token', token);
-  else localStorage.removeItem('token');
-}
-export function clearToken() { setToken(''); }
-
-// Also provide a default export for legacy imports like: import api from '../lib/api'
+// Default object AND named export to satisfy both import styles in the app
 const api = { get, post, put, del, setToken, clearToken };
+export { api };
 export default api;

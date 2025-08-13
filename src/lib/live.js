@@ -1,17 +1,20 @@
-// Simple SSE live client
-export function connectLive(pubId, { onProducts, onJackpot, onError } = {}) {
-  if (!pubId) return { close(){} };
-  const url = `/api/live/stream?pubId=${encodeURIComponent(pubId)}`;
-  const es = new EventSource(url, { withCredentials: false });
+// src/lib/live.js
+import { WS_BASE } from './env';
 
-  es.addEventListener('products.updated', (e) => {
-    try { onProducts && onProducts(JSON.parse(e.data)); } catch (_) {}
-  });
+// Simple WebSocket connector; app code can add listeners.
+export function connectLive(path = '/ws') {
+  const base = (WS_BASE || '').replace(/\/+$/, '');
+  const url  = new URL(base + path);
 
-  es.addEventListener('jackpot.updated', (e) => {
-    try { onJackpot && onJackpot(JSON.parse(e.data)); } catch (_) {}
-  });
+  // pass token for auth if you use it server-side
+  const token = localStorage.getItem('token');
+  if (token) url.searchParams.set('t', token);
 
-  es.onerror = (err) => { onError && onError(err); };
-  return es;
+  // Ensure ws/wss protocol
+  if (!/^wss?:/i.test(url.protocol)) {
+    url.protocol = 'wss:'; // safe default for production
+  }
+
+  const ws = new WebSocket(url.toString());
+  return ws;
 }

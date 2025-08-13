@@ -1,19 +1,21 @@
 // src/lib/api.js
-// Use CRA/Webpack-style env var only, to avoid any import.meta access.
-const API_BASE =
-  (process.env.REACT_APP_API_BASE || '').replace(/\/+$/, ''); // trim trailing slash
+import { API_BASE } from './env';
 
 export async function api(path, options = {}) {
-  const token = localStorage.getItem('token');
+  const base = (API_BASE || '').replace(/\/+$/, '');
+  const url  = base + path;
 
-  const res = await fetch(API_BASE + path, {
+  const token = localStorage.getItem('token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const res = await fetch(url, {
     method: options.method || 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}), // Bearer fallback
-    },
-    credentials: 'include', // send cookies for auth cookies
+    headers,
+    credentials: 'include',
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -21,11 +23,11 @@ export async function api(path, options = {}) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} · ${txt || res.statusText}`);
   }
-  try {
-    return await res.json();
-  } catch {
-    return {};
-  }
+
+  // Some endpoints may return empty; guard JSON parse.
+  const text = await res.text();
+  if (!text) return {};
+  try { return JSON.parse(text); } catch { return {}; }
 }
 
 export function setToken(token) {

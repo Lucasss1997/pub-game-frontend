@@ -1,137 +1,73 @@
 // src/pages/Dashboard.jsx
 import React, { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { useNavigate, Link } from 'react-router-dom';
+import { get, clearToken } from '../lib/api';
 import '../ui/pubgame-theme.css';
 
-function toGBP(cents) {
-  const n = Number(cents || 0) / 100;
-  return `£${n.toFixed(2)}`;
-}
-
 export default function Dashboard() {
-  const [data, setData] = useState(null);
+  const nav = useNavigate();
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [data, setData] = useState(null);
 
   async function load() {
     setErr('');
+    setLoading(true);
     try {
-      const d = await api.get('/api/dashboard');
+      const d = await get('/api/dashboard');
       setData(d);
-      // optional: console warnings if backend provided
-      if (d?._warnings?.length) console.warn('Dashboard warnings:', d._warnings);
     } catch (e) {
-      setErr(e.message || 'Server error');
+      if (e.status === 401) nav('/login', { replace: true });
+      else setErr(e.message || 'Server error');
+    } finally {
+      setLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
-  async function doLogout() {
-    try { await api.post('/api/logout', {}); } catch {}
-    window.location.href = '/login';
+  function logout() {
+    clearToken();
+    nav('/login', { replace: true });
   }
-
-  const go = (path) => () => { window.location.href = path; };
-
-  if (err) {
-    return (
-      <div className="pg-screen">
-        <div className="pg-card">
-          <h1 className="pg-title">Dashboard</h1>
-          <div className="pg-nav">
-            <button className="pg-chip" onClick={go('/')}>Home</button>
-            <button className="pg-chip" onClick={go('/pricing')}>New Game</button>
-            <button className="pg-chip" onClick={go('/admin')}>Admin</button>
-            <button className="pg-chip" onClick={go('/billing')}>Billing</button>
-            <button className="pg-chip primary" onClick={doLogout}>Logout</button>
-          </div>
-
-          <div className="pg-alert">{err}</div>
-          <button className="pg-button" onClick={load}>Retry</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="pg-screen">
-        <div className="pg-card">
-          <h1 className="pg-title">Dashboard</h1>
-          <div className="pg-nav">
-            <button className="pg-chip" onClick={go('/')}>Home</button>
-            <button className="pg-chip" onClick={go('/pricing')}>New Game</button>
-            <button className="pg-chip" onClick={go('/admin')}>Admin</button>
-            <button className="pg-chip" onClick={go('/billing')}>Billing</button>
-            <button className="pg-chip primary" onClick={doLogout}>Logout</button>
-          </div>
-          Loading…
-        </div>
-      </div>
-    );
-  }
-
-  const { pub, products = [], stats = {} } = data;
 
   return (
-    <div className="pg-screen">
-      <div className="pg-card">
-        <h1 className="pg-title">Dashboard</h1>
-
-        {/* Top menu (purple chips) */}
-        <div className="pg-nav">
-          <button className="pg-chip" onClick={go('/')}>Home</button>
-          <button className="pg-chip" onClick={go('/pricing')}>New Game</button>
-          <button className="pg-chip" onClick={go('/admin')}>Admin</button>
-          <button className="pg-chip" onClick={go('/billing')}>Billing</button>
-          <button className="pg-chip primary" onClick={doLogout}>Logout</button>
-        </div>
-
-        <section className="pg-block">
-          <h2 className="pg-subtitle">Your Pub</h2>
-          {pub ? (
-            <p>
-              <strong>{pub.name}</strong><br/>
-              <span className="pg-muted">
-                {[pub.city, pub.address].filter(Boolean).join(' • ')}
-              </span>
-            </p>
-          ) : <p>No pub profile yet.</p>}
-        </section>
-
-        <section className="pg-block">
-          <h2 className="pg-subtitle">Games</h2>
-          {products.length ? (
-            <ul className="pg-list">
-              {products.map(p => (
-                <li key={p.game_key}>
-                  <strong>{p.name}</strong> — {toGBP(p.price_cents)} • {p.active ? 'Active' : 'Inactive'}
-                  <div className="pg-row" style={{ marginTop: 8 }}>
-                    <button className="pg-button ghost" onClick={go('/admin')}>
-                      Edit in Admin
-                    </button>
-                    {p.game_key === 'crack_safe' && (
-                      <button className="pg-button" onClick={go('/crack-the-safe')}>
-                        Open Game
-                      </button>
-                    )}
-                    {p.game_key === 'whats_in_the_box' && (
-                      <button className="pg-button" onClick={go('/whats-in-the-box')}>
-                        Open Game
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : <p>No products configured.</p>}
-        </section>
-
-        <section className="pg-block">
-          <h2 className="pg-subtitle">Stats</h2>
-          <p>Jackpot: {toGBP(stats.jackpot_cents)}</p>
-        </section>
+    <div className="page-wrap">
+      <div className="toolbar">
+        <Link className="btn ghost" to="/">Home</Link>
+        <Link className="btn ghost" to="/enter/DEMO_PUB/crack">New Game</Link>
+        <Link className="btn ghost" to="/admin">Admin</Link>
+        <Link className="btn ghost" to="/billing">Billing</Link>
+        <button className="btn solid" onClick={logout}>Logout</button>
       </div>
+
+      <h1 className="title">Dashboard</h1>
+
+      {loading && <p>Loading...</p>}
+      {err && (
+        <div className="alert error">
+          {err} &nbsp; <button className="btn ghost" onClick={load}>Retry</button>
+        </div>
+      )}
+
+      {data && (
+        <>
+          {/* keep your existing layout/style; showing minimal info */}
+          <section className="card">
+            <h2 className="section-title">Games</h2>
+            {(data.products || []).map((p) => (
+              <div key={p.game_key} style={{ marginBottom: 10 }}>
+                <strong>{p.name}</strong> — £{(p.price_cents/100).toFixed(2)} · {p.active ? 'Active' : 'Inactive'}
+              </div>
+            ))}
+          </section>
+
+          <section className="card">
+            <h2 className="section-title">Stats</h2>
+            <div>Jackpot: £{((data.stats?.jackpot_cents || 0)/100).toFixed(2)}</div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

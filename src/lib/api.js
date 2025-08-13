@@ -1,41 +1,20 @@
 // src/lib/api.js
-const API_BASE =
-  process.env._APP_API_BASE ||
+const BASE =
   process.env.REACT_APP_API_BASE ||
-  'https://pub-game-backend.onrender.com';
+  process.env._APP_API_BASE ||            // your mobile editor env var
+  "http://localhost:5000";
 
-function authHeader() {
-  const t = localStorage.getItem('token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
-
-async function handle(res) {
-  const text = await res.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch {}
+export async function api(path, opts = {}) {
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    ...opts,
+  });
   if (!res.ok) {
-    const msg = data?.error || `HTTP ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.data = data;
-    throw err;
+    let detail = "";
+    try { detail = await res.text(); } catch {}
+    throw new Error(`HTTP ${res.status} · ${detail || res.statusText}`);
   }
-  return data;
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? res.json() : res.text();
 }
-
-export const api = {
-  get: (path) =>
-    fetch(API_BASE + path, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', ...authHeader() },
-      credentials: 'include', // include cookie if it exists
-    }).then(handle),
-
-  post: (path, body) =>
-    fetch(API_BASE + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify(body || {}),
-      credentials: 'include',
-    }).then(handle),
-};

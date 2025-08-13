@@ -1,201 +1,253 @@
 // src/pages/Admin.jsx
 import React, { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import "../ui/pubgame-theme.css";
-import "./admin.css";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
-
-const GAME_LABEL = {
-  crack_the_safe: "Crack the Safe",
-  whats_in_the_box: "What's in the Box",
-  raffle: "Raffle",
-};
-
-function Money({ value }) {
-  const v = (Number(value || 0) / 100).toFixed(2);
-  return <>£{v}</>;
-}
+import "./admin.css";
 
 export default function Admin() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [products, setProducts] = useState([]); // [{game_key,name,price_cents,active}]
-  const [jackpots, setJackpots] = useState({}); // { game_key: cents }
-  const [saving, setSaving] = useState({});     // keyed by game_key
+  const [diag, setDiag] = useState(null);
 
-  async function fetchAll() {
-    setLoading(true);
-    setErr("");
+  // products shown on the page (array of objects)
+  const [products, setProducts] = useState([]);
+  // single jackpot field (backend expects one value today)
+  const [jackpot, setJackpot] = useState("");
+
+  // --- helpers ----
+  const centsToPounds = (cents) =>
+    typeof cents === "number" ? (cents / 100).toFixed(2) : "0.00";
+
+  const poundsToString = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v).trim();
+    return s === "" ? "" : s;
+  };
+
+  const parsePounds = (s) => {
+    const cleaned = String(s || "")
+      .trim()
+      .replace(/[£,\s]/g, "")
+      .replace(/p$/i, "");
+    if (!cleaned) return "0.00";
+    // keep at most 2 dp
+    const num = Number(cleaned);
+    if (!Number.isFinite(num)) return "0.00";
+    return num.toFixed(2);
+  };
+
+  // --- load initial data (safe + compatible with current backend) ---
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      setLoading(true);
+      setErr("");
+      try {
+        // Use /api/dashboard (auth) as the reliable source
+        const dash = await api.get("/api/dashboard");
+
+        const prodRows = Array.isArray(dash?.products) ? dash.products : [];
+
+        // Normalize product rows for the form
+        const norm = prodRows.map((p) => ({
+          game_key: p.game_key,
+          name: p.name || "",
+          price: centsToPounds(p.price_cents ?? 0),
+          active: !!p.active,
+        }));
+
+        if (mounted) {
+          setProducts(norm);
+          const jp = dash?.stats?.jackpot_cents ?? 0;
+          setJackpot(centsToPounds(jp));
+          setDiag({
+            products: norm.length,
+            jackpot_cents: jp ?? 0,
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setErr(prettyErr(e));
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  function prettyErr(e) {
+    if (!e) return "Unknown error";
+    if (typeof e === "string") return e;
+    if (e.message) return e.message;
     try {
-      const data = await api("/api/admin/products");
-      setProducts(data.products || []);
-      setJackpots(data.jackpots || {});
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setLoading(false);
+      return JSON.stringify(e);
+    } catch {
+      return "Error";
     }
   }
 
-  useEffect(() => { fetchAll(); }, []);
-
-  function localPrice(game_key) {
-    const p = products.find(x => x.game_key === game_key);
-    return p ? (p.price_cents / 100).toFixed(2) : "0.00";
-  }
-
-  function setLocalPrice(game_key, poundsStr) {
-    const cents = Math.round(Number(poundsStr || 0) * 100);
-    setProducts(prev =>
-      prev.map(p => p.game_key === game_key ? { ...p, price_cents: cents } : p)
-    );
-  }
-
-  function setLocalName(game_key, name) {
-    setProducts(prev =>
-      prev.map(p => p.game_key === game_key ? { ...p, name } : p)
-    );
-  }
-
-  function setLocalActive(game_key, active) {
-    setProducts(prev =>
-      prev.map(p => p.game_key === game_key ? { ...p, active } : p)
-    );
-  }
-
-  async function saveProduct(game_key) {
-    setSaving(s => ({ ...s, [game_key]: true }));
+  // --- actions ---
+  async function onSaveJackpot() {
     setErr("");
     try {
-      const p = products.find(x => x.game_key === game_key);
-      await api("/api/admin/product", {
-        method: "POST",
-        body: JSON.stringify({
-          game_key,
-          name: p?.name || "",
-          price: (p?.price_cents || 0) / 100,
-          active: !!p?.active,
-        }),
-      });
+      const body = { jackpot: parsePounds(jackpot) };
+      await api.post("/api/admin/jackpot", body); // backend expects one value today
+      alert("Jackpot saved");
     } catch (e) {
-      setErr(e.message);
-    } finally {
-      setSaving(s => ({ ...s, [game_key]: false }));
+      setErr(prettyErr(e));
     }
   }
 
-  async function saveJackpot(game_key) {
-    setSaving(s => ({ ...s, [game_key]: true }));
+  async function onSaveProduct(idx) {
     setErr("");
     try {
-      const pounds = Number((jackpots[game_key] || 0) / 100).toFixed(2);
-      await api("/api/admin/jackpot", {
-        method: "POST",
-        body: JSON.stringify({ game_key, jackpot: pounds }),
-      });
+      const p = products[idx];
+      const payload = [
+        {
+          game_key: p.game_key,
+          name: p.name,
+          price: parsePounds(p.price),
+          active: !!p.active,
+        },
+      ];
+      await api.post("/api/admin/products", { products: payload });
+      alert(`Saved “${p.name || p.game_key}”`);
     } catch (e) {
-      setErr(e.message);
-    } finally {
-      setSaving(s => ({ ...s, [game_key]: false }));
+      setErr(prettyErr(e));
     }
   }
 
-  if (loading) {
-    return (
-      <div className="wrap">
-        <div className="card"><h1>Admin</h1><p>Loading…</p></div>
-      </div>
-    );
+  function updateProduct(idx, patch) {
+    setProducts((prev) => {
+      const next = prev.slice();
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
   }
 
+  // --- UI ---
   return (
-    <div className="wrap">
-      <div className="card">
-        <div className="toolbar">
-          <Link to="/dashboard" className="btn ghost">Back to Dashboard</Link>
-          <Link to="/pricing" className="btn ghost">New Game</Link>
-          <Link to="/billing" className="btn ghost">Billing</Link>
-          <button className="btn" onClick={() => { localStorage.removeItem("token"); nav("/login"); }}>
+    <div className="admin-wrap">
+      <div className="admin-card">
+        <h1 className="admin-title">Admin</h1>
+
+        <div className="actions">
+          <button className="btn ghost" onClick={() => navigate("/dashboard")}>
+            Back to Dashboard
+          </button>
+          <button className="btn ghost" onClick={() => navigate("/enter/1/crack_safe")}>
+            New Game
+          </button>
+          <button className="btn ghost" onClick={() => navigate("/billing")}>
+            Billing
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              localStorage.removeItem("token");
+              navigate("/login");
+            }}
+            style={{ marginLeft: "auto" }}
+          >
             Logout
           </button>
         </div>
-        <h1>Admin</h1>
-        {err && <div className="alert error">{err}</div>}
+
+        {err && (
+          <div className="alert error">HTTP • {err}</div>
+        )}
+
+        {diag && (
+          <pre className="diag">{JSON.stringify(diag, null, 2)}</pre>
+        )}
       </div>
 
-      {products.map((p) => {
-        const game_key = p.game_key;
-        const label = GAME_LABEL[game_key] || game_key;
-        const jpCents = jackpots[game_key] || 0;
+      {/* Jackpot section (current backend = one jackpot) */}
+      <div className="admin-card">
+        <h2 className="section-title">Jackpot</h2>
+        <div className="field">
+          <span>Jackpot (£)</span>
+          <input
+            inputMode="decimal"
+            placeholder="0.00"
+            value={poundsToString(jackpot)}
+            onChange={(e) => setJackpot(e.target.value)}
+          />
+        </div>
+        <div className="actions">
+          <button className="btn" disabled={loading} onClick={onSaveJackpot}>
+            Save Jackpot
+          </button>
+        </div>
+      </div>
 
-        return (
-          <div className="card" key={game_key}>
-            <h2>{label}</h2>
-
-            {/* jackpot box for this game */}
-            <div className="field">
-              <span>Jackpot (£)</span>
-              <input
-                type="number"
-                step="0.01"
-                value={(jpCents / 100).toFixed(2)}
-                onChange={(e) => {
-                  const val = Math.round(Number(e.target.value || 0) * 100);
-                  setJackpots(prev => ({ ...prev, [game_key]: val }));
-                }}
-              />
-            </div>
-            <button
-              className="btn solid"
-              disabled={!!saving[game_key]}
-              onClick={() => saveJackpot(game_key)}
+      {/* Products */}
+      <div className="admin-card">
+        <h2 className="section-title">Crack the Safe</h2>
+        {loading && <div>Loading…</div>}
+        {!loading && products.length === 0 && (
+          <div>No products configured yet.</div>
+        )}
+        {!loading &&
+          products.map((p, i) => (
+            <div
+              key={p.game_key || i}
+              style={{
+                borderTop: "1px dashed #3b1bb8",
+                paddingTop: 10,
+                marginTop: 10,
+              }}
             >
-              {saving[game_key] ? "Saving…" : "Save Jackpot"}
-            </button>
+              <div className="field">
+                <span>Product name</span>
+                <input
+                  value={p.name}
+                  onChange={(e) =>
+                    updateProduct(i, { name: e.target.value })
+                  }
+                />
+              </div>
 
-            <hr className="sep" />
+              <div className="field">
+                <span>Ticket price (£)</span>
+                <input
+                  inputMode="decimal"
+                  value={p.price}
+                  onChange={(e) =>
+                    updateProduct(i, { price: e.target.value })
+                  }
+                />
+              </div>
 
-            {/* product fields */}
-            <div className="field">
-              <span>Product name</span>
-              <input
-                value={p.name || ""}
-                onChange={(e) => setLocalName(game_key, e.target.value)}
-              />
+              <div className="field">
+                <span>Active</span>
+                <select
+                  value={p.active ? "yes" : "no"}
+                  onChange={(e) =>
+                    updateProduct(i, { active: e.target.value === "yes" })
+                  }
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+
+              <div className="actions">
+                <button className="btn" onClick={() => onSaveProduct(i)}>
+                  Save
+                </button>
+              </div>
             </div>
-
-            <div className="field">
-              <span>Ticket price (£)</span>
-              <input
-                type="number"
-                step="0.01"
-                value={localPrice(game_key)}
-                onChange={(e) => setLocalPrice(game_key, e.target.value)}
-              />
-            </div>
-
-            <div className="field">
-              <span>Active</span>
-              <select
-                value={p.active ? "yes" : "no"}
-                onChange={(e) => setLocalActive(game_key, e.target.value === "yes")}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </div>
-
-            <button
-              className="btn"
-              disabled={!!saving[game_key]}
-              onClick={() => saveProduct(game_key)}
-            >
-              {saving[game_key] ? "Saving…" : "Save"}
-            </button>
-          </div>
-        );
-      })}
+          ))}
+      </div>
     </div>
   );
 }

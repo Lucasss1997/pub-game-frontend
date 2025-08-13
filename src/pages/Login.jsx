@@ -1,64 +1,46 @@
-// src/pages/Login.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../lib/api';
-import '../ui/pubgame-theme.css';
+import { api, setToken } from '../lib/api';
 
 export default function Login() {
-  const navigate = useNavigate();
+  const nav = useNavigate();
   const [email, setEmail] = useState('new@pub.com');
   const [password, setPassword] = useState('');
-  const [err, setErr] = useState('');
+  const [error, setError] = useState('');
 
   async function onSubmit(e) {
     e.preventDefault();
-    setErr('');
+    setError('');
     try {
-      const { token } = await api.post('/api/login', { email, password });
-      if (token) localStorage.setItem('token', token); // also keep it in localStorage
-      navigate('/dashboard');
-    } catch (e2) {
-      setErr(e2.message || 'Login failed');
-    }
-  }
-
-  async function ensureUserOnce() {
-    setErr('');
-    try {
-      await api.post('/api/dev/ensure-user', { email, password });
-      setErr('User ensured. Try logging in again.');
-    } catch (e2) {
-      setErr(e2.message || 'Ensure failed');
+      const data = await api('/api/login', {
+        method: 'POST',
+        body: { email, password },
+      });
+      // store Bearer token as fallback, cookie is set by server
+      if (data?.token) setToken(data.token);
+      nav('/dashboard', { replace: true });
+    } catch (err) {
+      setError(err.message || 'Login failed');
     }
   }
 
   return (
-    <div className="pg-screen">
-      <form className="pg-card" onSubmit={onSubmit}>
-        <h1 className="pg-title">Sign In</h1>
-        {err && <div className="pg-alert">{err}</div>}
-        <input
-          className="pg-input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoCapitalize="none"
-        />
-        <input
-          className="pg-input"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <div className="pg-actions">
-          <button className="pg-button" type="submit">Login</button>
-          <button type="button" className="pg-button ghost" onClick={ensureUserOnce}>
-            Ensure user (once)
-          </button>
-        </div>
-      </form>
+    <div className="wrap">
+      <div className="card" style={{ maxWidth: 520 }}>
+        <h1>Sign In</h1>
+        {error && <div className="alert error">{error}</div>}
+        <form onSubmit={onSubmit}>
+          <div className="field">
+            <label>Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <button className="btn solid" type="submit">Login</button>
+        </form>
+      </div>
     </div>
   );
 }

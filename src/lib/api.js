@@ -1,27 +1,44 @@
-// src/lib/api.js
+// Robust fetch wrapper used everywhere.
+// Exports BOTH a named `api` and default export to prevent import mismatches.
 import { API_BASE } from './env';
 
-export async function api(path, options = {}) {
-  const url = API_BASE + path;
+const base = (API_BASE || '').replace(/\/+$/, '');
+
+async function request(method, path, body) {
+  const url = base + path;
+  const headers = { 'Content-Type': 'application/json' };
+
+  // include auth token if present
   const token = localStorage.getItem('token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(url, {
-    method: options.method || 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    method,
+    headers,
     credentials: 'include',
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: body == null ? undefined : JSON.stringify(body),
   });
 
+  // Try to parse JSON, but keep text if not JSON
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+
   if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} · ${txt || res.statusText}`);
+    const message = (data && (data.error || data.message)) || `HTTP ${res.status}`;
+    const err = new Error(message);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
-  try { return await res.json(); } catch { return {}; }
+  return data;
 }
 
-export function setToken(token) { if (token) localStorage.setItem('token', token); }
-export function clearToken()     { localStorage.removeItem('token'); }
+export const api = {
+  get:  (path)        => request('GET',  path),
+  post: (path, body)  => request('POST', path, body),
+  put:  (path, body)  => request('PUT',  path, body),
+  del:  (path, body)  => request('DELETE', path, body),
+};
+
+export default api;

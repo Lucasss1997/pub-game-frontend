@@ -1,20 +1,25 @@
 // src/lib/api.js
-const BASE =
-  process.env.REACT_APP_API_BASE ||
-  process.env._APP_API_BASE ||            // your mobile editor env var
-  "http://localhost:5000";
+const BASE = process.env._APP_API_BASE || process.env.REACT_APP_API_BASE || '';
 
-export async function api(path, opts = {}) {
+async function request(path, opts = {}) {
   const res = await fetch(`${BASE}${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    method: 'GET',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   if (!res.ok) {
-    let detail = "";
-    try { detail = await res.text(); } catch {}
-    throw new Error(`HTTP ${res.status} · ${detail || res.statusText}`);
+    let txt = await res.text().catch(() => '');
+    try { txt = JSON.parse(txt); } catch {}
+    const err = new Error(`HTTP ${res.status}`);
+    err.payload = txt;
+    throw err;
   }
-  const ct = res.headers.get("content-type") || "";
-  return ct.includes("application/json") ? res.json() : res.text();
+  return res.json();
 }
+
+export const api = {
+  get: (p) => request(p),
+  post: (p, body) => request(p, { method: 'POST', body }),
+};

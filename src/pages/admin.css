@@ -1,58 +1,41 @@
-/* playful pub theme */
-.admin-wrap {
+/* src/pages/admin.css */
+.wrap {
   min-height: 100vh;
-  padding: 24px;
-  background: #efad10; /* orange slab */
+  background: #efad10;
   background-image:
     radial-gradient(1200px 400px at 20% -10%, #ffd36b33, transparent 60%),
     radial-gradient(1200px 500px at 80% -20%, #7a2dda22, transparent 60%);
+  padding: 24px 12px 80px;
   font-family: ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  color: #2d1763; /* deep purple text */
 }
 
-.admin-card {
+.card {
   background: #f3b223;
   border: 2px solid #3b1bb8;
   border-radius: 22px;
-  box-shadow: 0 18px 40px rgba(43, 16, 88, 0.25), inset 0 0 0 1px #00000010;
+  box-shadow: 0 18px 40px rgba(43, 16, 88, .25), inset 0 0 0 1px #00000010;
   padding: 16px;
   max-width: 920px;
   margin: 0 auto 18px auto;
 }
 
-.admin-title {
-  margin: 0 0 6px 0;
-  font-size: 36px;
-  letter-spacing: 1px;
-  font-weight: 900;
-  color: #3916cc;
-  text-shadow: 0 2px 0 #ffdf82;
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
-.admin-sub {
-  margin: 0 0 12px 0;
-  color: #3d2179;
-  opacity: 0.9;
-}
-
-.section-title {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 900;
-  color: #3916cc;
+h1, h2 {
+  margin: 0 0 10px 0;
+  color: #3b1bb8;        /* purple */
   text-shadow: 0 1px 0 #ffeaa6;
 }
+h1 { font-size: 36px; font-weight: 900; }
+h2 { font-size: 26px; font-weight: 900; }
 
-.field {
-  display: grid;
-  gap: 6px;
-  margin: 10px 0;
-}
-
-.field > span {
-  font-weight: 700;
-  color: #3e2282;
-}
+.field { display: grid; gap: 6px; margin: 12px 0; }
+.field > span { font-weight: 700; color: #3e2282; }
 
 input, select {
   width: 100%;
@@ -64,10 +47,7 @@ input, select {
   font-size: 16px;
   outline: none;
 }
-
-input:focus, select:focus {
-  box-shadow: 0 0 0 4px #7a2dda33;
-}
+input:focus, select:focus { box-shadow: 0 0 0 4px #7a2dda33; }
 
 .btn {
   display: inline-block;
@@ -80,27 +60,8 @@ input:focus, select:focus {
   cursor: pointer;
   user-select: none;
 }
-
-.btn[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn.ghost {
-  background: transparent;
-  color: #3b1bb8;
-}
-
-.btn.solid {
-  background: #3b1bb8;
-  color: #fff;
-}
-
-.actions {
-  display: flex;
-  gap: 12px;
-  margin: 8px 0 10px 0;
-}
+.btn.ghost { background: transparent; color: #3b1bb8; }
+.btn.solid { background: #3b1bb8; color: #fff; }
 
 .alert.error {
   background: #ffd0d6;
@@ -112,13 +73,10 @@ input:focus, select:focus {
   white-space: pre-wrap;
 }
 
-.diag {
-  background: #dcb9ff;
-  color: #2a1459;
-  border: 2px solid #3b1bb8;
-  border-radius: 14px;
-  padding: 10px 12px;
-  margin: 8px 0 4px 0;
-  overflow: auto;
-  max-height: 260px;
+.sep {
+  height: 2px;
+  border: 0;
+  margin: 14px 0;
+  background: #3b1bb8;
+  opacity: .25;
 }

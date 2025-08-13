@@ -96,4 +96,7 @@ const s = {
   err:{background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.35)',color:'#fecaca',padding:10,borderRadius:10},
   info:{background:'rgba(59,130,246,.12)',border:'1px solid rgba(59,130,246,.35)',color:'#bfdbfe',padding:10,borderRadius:10},
   footer:{padding:14,textAlign:'center',color:'#64748b',borderTop:`1px solid ${c.border}`,background:'rgba(15,23,42,.7)'}
+  <div className="pg-muted" style={{marginTop:12}}>
+  Don’t have an account? <a href="/register">Sign up</a>
+</div>
 };

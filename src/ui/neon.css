@@ -1,56 +1,168 @@
+/* src/ui/neon.css
+   Playful “neon” accents without forcing cyan headings.
+   - No global heading colours here.
+   - Keeps nice glows for buttons, cards, inputs, and alerts.
+   - Uses your brand purple + warm yellow/orange palette.
+*/
+
+/* ===== Brand palette (CSS variables) ===== */
+:root{
+  --pg-bg:        #efad10;   /* orange slab */
+  --pg-card:      #f3b223;   /* card surface */
+  --pg-ink:       #2d1763;   /* body text (deep purple) */
+  --pg-ink-soft:  #3e2282;
+  --pg-accent:    #3b1bb8;   /* brand purple (borders) */
+  --pg-accent-2:  #6f2cff;   /* filled buttons */
+  --pg-cream:     #ffe69b;   /* inputs */
+  --pg-shadow:    rgba(43,16,88,.25);
+  --pg-glow:      rgba(122,45,218,.35); /* soft purple glow */
+  --pg-danger:    #841b2d;
+  --pg-danger-bg: #ffd0d6;
+}
+
+/* ===== Base resets (NO heading colours) ===== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
 body {
-  font-family: 'Segoe UI', sans-serif;
-  background: #111;
   margin: 0;
-  color: white;
+  color: var(--pg-ink);
+  background: var(--pg-bg);
+  font-family: ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
-.neon-wrap {
-  padding: 20px;
-  max-width: 900px;
-  margin: auto;
+/* Do NOT style h1–h6 here; leave colour to page/theme CSS */
+
+/* ===== Cards ===== */
+.neon-card{
+  background: var(--pg-card);
+  border: 2px solid var(--pg-accent);
+  border-radius: 22px;
+  padding: 16px;
+  box-shadow:
+    0 18px 40px var(--pg-shadow),
+    inset 0 0 0 1px #00000010;
 }
 
-.card {
-  background: rgba(0,0,0,0.8);
-  border: 2px solid #0ff;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
+/* ===== Buttons ===== */
+.neon-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:.5rem;
+  min-height:44px;
+  padding:12px 16px;
+  border-radius:14px;
+  border:2px solid var(--pg-accent);
+  font-weight:900;
+  text-decoration:none;
+  cursor:pointer;
+  user-select:none;
+  transition: transform .08s ease, box-shadow .12s ease, background .12s ease;
 }
 
-h2, h3 {
-  color: #0ff;
-  margin-top: 0;
+/* filled */
+.neon-btn.solid{
+  background: var(--pg-accent-2);
+  color:#fff;
+  box-shadow:
+    0 8px 20px var(--pg-shadow),
+    0 0 0 0 var(--pg-glow);
+}
+.neon-btn.solid:hover{ transform: translateY(-1px); box-shadow: 0 10px 24px var(--pg-shadow), 0 0 0 6px var(--pg-glow); }
+.neon-btn.solid:active{ transform: translateY(0); box-shadow: 0 6px 16px var(--pg-shadow), 0 0 0 3px var(--pg-glow); }
+
+/* outline/ghost */
+.neon-btn.ghost{
+  background: transparent;
+  color: var(--pg-accent);
+}
+.neon-btn.ghost:hover{ box-shadow: 0 0 0 6px var(--pg-glow); }
+
+/* disabled */
+.neon-btn[disabled]{ opacity:.6; cursor:not-allowed; box-shadow:none; transform:none; }
+
+/* ===== Inputs ===== */
+.neon-input,
+.neon-select,
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+select{
+  width:100%;
+  background: var(--pg-cream);
+  border:2px solid var(--pg-accent);
+  color:var(--pg-ink);
+  border-radius:14px;
+  padding:12px 14px;
+  font-size:16px;
+  outline:none;
+  transition: box-shadow .12s ease, border-color .12s ease;
 }
 
-.btn {
-  display: inline-block;
-  padding: 10px 20px;
-  background: #0ff;
-  border: none;
-  color: black;
-  font-weight: bold;
-  cursor: pointer;
-  text-decoration: none;
+.neon-input:focus,
+.neon-select:focus,
+input:focus,
+select:focus{
+  border-color: var(--pg-accent);
+  box-shadow: 0 0 0 6px var(--pg-glow);
 }
 
-.btn:hover {
-  background: #09f;
+/* ===== Alert / Status ===== */
+.neon-alert{
+  border-radius:14px;
+  padding:10px 12px;
+  border:2px solid var(--pg-accent);
+  background:#f6e7ff;
+  color:var(--pg-ink);
+}
+.neon-alert.error{
+  border-color: var(--pg-danger);
+  background: var(--pg-danger-bg);
+  color: var(--pg-danger);
+}
+.neon-alert.success{
+  border-color:#237b40;
+  background:#d9f6e3;
+  color:#155e2c;
 }
 
-input {
-  width: 100%;
-  padding: 10px;
-  margin: 8px 0;
-  border-radius: 4px;
-  border: 1px solid #ccc;
+/* ===== Utility spacing ===== */
+.neon-stack{ display:grid; gap:12px; }
+.neon-row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+
+/* ===== Page wrapper (optional) ===== */
+.neon-wrap{
+  min-height:100vh;
+  padding:24px;
+  background:
+    radial-gradient(1200px 400px at 20% -10%, #ffd36b33, transparent 60%),
+    radial-gradient(1200px 500px at 80% -20%, #7a2dda22, transparent 60%),
+    var(--pg-bg);
 }
 
-.error {
-  color: red;
-}
+/* ===== Links (no cyan) ===== */
+a{ color: var(--pg-accent); text-decoration:none; }
+a:hover{ text-decoration:underline; }
 
-.loading {
-  text-align: center;
+/* ===== Tables (used in admin lists) ===== */
+.neon-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  overflow:hidden;
+  border:2px solid var(--pg-accent);
+  border-radius:16px;
 }
+.neon-table th,
+.neon-table td{
+  padding:10px 12px;
+  border-bottom:1px solid #00000012;
+}
+.neon-table thead th{
+  background:#e9cb5d;
+  color:var(--pg-ink);
+  font-weight:900;
+}
+.neon-table tbody tr:nth-child(odd){ background:#f8d066; }
+.neon-table tbody tr:nth-child(even){ background:#f7c64e; }

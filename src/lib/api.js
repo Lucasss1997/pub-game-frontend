@@ -1,5 +1,7 @@
 // src/lib/api.js
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+
+// Directly hardcode the backend Render URL here
+const API_BASE_URL = 'https://pub-game-backend.onrender.com';
 
 export async function getAdminConfig() {
   const res = await fetch(`${API_BASE_URL}/api/admin/config`, {

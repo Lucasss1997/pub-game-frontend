@@ -1,77 +1,52 @@
 import React, { useState } from 'react';
-import { api } from '../lib/api';
+import api from '../lib/api';
 import '../ui/pubgame-theme.css';
 
 export default function Register() {
   const [email, setEmail] = useState('');
   const [pubName, setPubName] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  async function submit(e) {
+  async function handleRegister(e) {
     e.preventDefault();
-    setErr('');
-    setBusy(true);
     try {
-      const res = await api.post('/api/register', { email, password, pubName });
-      if (res && res.id) {
-        // Registered – send to login
-        window.location.href = '/login';
-      } else {
-        setErr('Registration failed.');
-      }
-    } catch (e2) {
-      setErr(e2?.message || 'Registration failed.');
-    } finally {
-      setBusy(false);
+      await api.post('/api/register', { email, password, pubName });
+      setSuccess('Registration successful. Please log in.');
+      setError('');
+    } catch (err) {
+      setError('Registration failed.');
+      setSuccess('');
     }
   }
 
   return (
-    <div className="pg-wrap">
-      <div className="pg-card">
-        <h1>Sign Up</h1>
-        {err && <div className="pg-alert">{err}</div>}
-        <form onSubmit={submit} className="pg-form">
-          <label>Pub name</label>
-          <input
-            className="pg-input"
-            value={pubName}
-            onChange={e=>setPubName(e.target.value)}
-            placeholder="The King’s Arms"
-            required
-          />
-
-          <label>Email</label>
-          <input
-            className="pg-input"
-            type="email"
-            value={email}
-            onChange={e=>setEmail(e.target.value)}
-            placeholder="you@pub.com"
-            required
-          />
-
-          <label>Password</label>
-          <input
-            className="pg-input"
-            type="password"
-            value={password}
-            onChange={e=>setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-          />
-
-          <button className="pg-btn" type="submit" disabled={busy}>
-            {busy ? 'Creating...' : 'Create account'}
-          </button>
-
-          <div className="pg-muted" style={{marginTop:12}}>
-            Already have an account? <a href="/login">Sign in</a>
-          </div>
-        </form>
-      </div>
+    <div className="page">
+      <h1>Register</h1>
+      {error && <div className="error">{error}</div>}
+      {success && <div className="success">{success}</div>}
+      <form onSubmit={handleRegister}>
+        <input
+          type="text"
+          placeholder="Pub Name"
+          value={pubName}
+          onChange={(e) => setPubName(e.target.value)}
+        />
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button type="submit">Register</button>
+      </form>
     </div>
   );
 }

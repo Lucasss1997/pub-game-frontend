@@ -1,71 +1,60 @@
 // src/lib/api.js
+// A tiny fetch wrapper that supports both default and named imports.
+// Works with auth cookies and/or bearer tokens.
+
 import { API_BASE } from "./env";
 
-let TOKEN = null;
+const BASE = (API_BASE || "").replace(/\/+$/, "");
 
-// ---- token helpers ----
-export function setToken(t) {
-  TOKEN = t || null;
-  if (t) localStorage.setItem("token", t);
-  else localStorage.removeItem("token");
-}
-export function clearToken() {
-  setToken(null);
+// --- token helpers (both cookie or header flows) ---
+export function setToken(token) {
+  if (token) localStorage.setItem("token", token);
 }
 export function getToken() {
-  return TOKEN || localStorage.getItem("token") || null;
+  return localStorage.getItem("token") || "";
+}
+export function clearToken() {
+  localStorage.removeItem("token");
 }
 
-// ---- core request ----
-function buildUrl(path) {
-  const base = (API_BASE || "").replace(/\/+$/, "");
-  const p = String(path || "").replace(/^\/+/, "");
-  return base ? `${base}/${p}` : `/${p}`;
-}
+// --- core request ---
+async function request(path, { method = "GET", body } = {}) {
+  if (!BASE) throw new Error("API base not configured");
 
-async function request(path, { method = "GET", headers = {}, body, ...rest } = {}) {
-  const url = buildUrl(path);
+  const url = `${BASE}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const headers = { "Content-Type": "application/json" };
   const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
 
-  const h = { "Content-Type": "application/json", ...headers };
-  if (token) h.Authorization = `Bearer ${token}`;
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    credentials: "include", // send/receive cookies too
+  });
 
-  const opts = { method, headers: h, credentials: "include", ...rest };
-  if (body !== undefined) {
-    opts.body = typeof body === "string" ? body : JSON.stringify(body);
-  }
-
-  const res = await fetch(url, opts);
+  // Try to parse JSON; fall back to text for HTML error bodies
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j = text ? JSON.parse(text) : null;
-      if (j?.error) msg += ` · ${j.error}`;
-      else if (text) msg += ` · ${text}`;
-    } catch {
-      if (text) msg += ` · ${text}`;
-    }
+    const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
     const err = new Error(msg);
     err.status = res.status;
+    err.data = data;
     throw err;
   }
-
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return res.json();
-  return res.text();
+  return data;
 }
 
-// ---- helpers + callable api ----
-export const get  = (p, o = {})         => request(p, { ...o, method: "GET"  });
-export const post = (p, body, o = {})   => request(p, { ...o, method: "POST", body });
-export const put  = (p, body, o = {})   => request(p, { ...o, method: "PUT",  body });
-export const del  = (p, o = {})         => request(p, { ...o, method: "DELETE" });
+// --- verbs ---
+export function get(path)  { return request(path, { method: "GET" }); }
+export function post(path, body) { return request(path, { method: "POST", body }); }
+export function put(path, body)  { return request(path, { method: "PUT",  body }); }
+export function del(path)        { return request(path, { method: "DELETE" }); }
 
-function apiCallable(path, opts) {
-  return request(path, opts);
-}
-
-export const api = apiCallable;  // ✅ named export
-export default apiCallable;      // ✅ default export
+// Default export so you can also `import api from '../lib/api'`
+const api = { get, post, put, del, setToken, clearToken, getToken };
+export default api;

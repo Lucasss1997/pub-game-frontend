@@ -13,6 +13,7 @@ import WhatsInTheBox from './pages/WhatsInTheBox';
 import Pricing from './pages/Pricing';
 import Raffle from './pages/Raffle';
 import Billing from './pages/Billing';
+import Register from './pages/Register';
 
 // Simple auth gate (swap for your real check if different)
 const isAuthed = () => !!localStorage.getItem('token');

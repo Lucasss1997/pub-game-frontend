@@ -3,6 +3,7 @@ import { API_BASE } from "./env";
 
 let TOKEN = null;
 
+// ---- token helpers ----
 export function setToken(t) {
   TOKEN = t || null;
   if (t) localStorage.setItem("token", t);
@@ -15,6 +16,7 @@ export function getToken() {
   return TOKEN || localStorage.getItem("token") || null;
 }
 
+// ---- core request ----
 function buildUrl(path) {
   const base = (API_BASE || "").replace(/\/+$/, "");
   const p = String(path || "").replace(/^\/+/, "");
@@ -35,18 +37,19 @@ async function request(path, { method = "GET", headers = {}, body, ...rest } = {
 
   const res = await fetch(url, opts);
 
-  // Convert non-2xx into readable errors
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     let msg = `HTTP ${res.status}`;
     try {
-      const j = JSON.parse(text);
-      if (j && j.error) msg += ` · ${JSON.stringify(j)}`;
+      const j = text ? JSON.parse(text) : null;
+      if (j?.error) msg += ` · ${j.error}`;
       else if (text) msg += ` · ${text}`;
     } catch {
       if (text) msg += ` · ${text}`;
     }
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
   }
 
   const ct = res.headers.get("content-type") || "";
@@ -54,12 +57,15 @@ async function request(path, { method = "GET", headers = {}, body, ...rest } = {
   return res.text();
 }
 
-// Named helpers
-export const get  = (p, o = {})           => request(p, { ...o, method: "GET"  });
-export const post = (p, body, o = {})     => request(p, { ...o, method: "POST", body });
-export const put  = (p, body, o = {})     => request(p, { ...o, method: "PUT",  body });
+// ---- helpers + callable api ----
+export const get  = (p, o = {})         => request(p, { ...o, method: "GET"  });
+export const post = (p, body, o = {})   => request(p, { ...o, method: "POST", body });
+export const put  = (p, body, o = {})   => request(p, { ...o, method: "PUT",  body });
+export const del  = (p, o = {})         => request(p, { ...o, method: "DELETE" });
 
-// Default callable export
-export default function api(path, opts) {
+function apiCallable(path, opts) {       // default-callable form
   return request(path, opts);
 }
+
+export const api = apiCallable;          // named export
+export default apiCallable;               // default export

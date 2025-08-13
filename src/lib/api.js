@@ -1,15 +1,27 @@
-// Robust fetch wrapper used everywhere.
-// Exports BOTH a named `api` and default export to prevent import mismatches.
+// src/lib/api.js
+// Fetch wrapper + tiny auth helpers.
+// Exports BOTH a named `api` and default export, AND setToken/getToken/clearToken.
 import { API_BASE } from './env';
 
 const base = (API_BASE || '').replace(/\/+$/, '');
 
+// ---- auth helpers (so existing imports keep working) ----
+export function setToken(token) {
+  if (token) localStorage.setItem('token', token);
+}
+export function getToken() {
+  return localStorage.getItem('token') || '';
+}
+export function clearToken() {
+  localStorage.removeItem('token');
+}
+
+// ---- request helper ----
 async function request(method, path, body) {
   const url = base + path;
   const headers = { 'Content-Type': 'application/json' };
 
-  // include auth token if present
-  const token = localStorage.getItem('token');
+  const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(url, {
@@ -19,7 +31,6 @@ async function request(method, path, body) {
     body: body == null ? undefined : JSON.stringify(body),
   });
 
-  // Try to parse JSON, but keep text if not JSON
   const text = await res.text();
   let data;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }

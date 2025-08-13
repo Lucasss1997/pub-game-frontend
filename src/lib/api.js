@@ -1,56 +1,39 @@
 // src/lib/api.js
-// Robust API helper that works in CRA, Vite, or plain <script> setups.
-
 const BASE =
-  // Vite (e.g. VITE_APP_API_BASE=https://… in .env)
-  (typeof import.meta !== 'undefined' &&
-    import.meta.env &&
-    (import.meta.env.VITE_APP_API_BASE || import.meta.env.VITE_API_BASE)) ||
-  // CRA (e.g. REACT_APP_API_BASE=https://… in .env)
-  (typeof process !== 'undefined' &&
-    process.env &&
-    (process.env.REACT_APP_API_BASE || process.env.REACT_APP_APIURL)) ||
-  // Window fallback (you can set window._APP_API_BASE in index.html if you like)
-  (typeof window !== 'undefined' && window._APP_API_BASE) ||
-  // Hard default so we don’t crash if nothing is set:
-  'https://pub-game-backend.onrender.com';
+  process.env.REACT_APP_API_BASE ||
+  process.env._APP_API_BASE || // your current .env key
+  "https://pub-game-backend.onrender.com"; // fallback
 
-function full(path) {
-  if (!path) throw new Error('No path provided to api helper');
-  if (/^https?:\/\//i.test(path)) return path;        // already absolute
-  // ensure exactly one slash between base and path
-  return `${BASE.replace(/\/+$/,'')}/${path.replace(/^\/+/, '')}`;
-}
+async function request(path, { method = "GET", body, headers } = {}) {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(headers || {}),
+    },
+    // THIS is the critical line: send cookies on cross‑site requests
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
+  });
 
-async function handle(r) {
-  if (!r.ok) {
-    let body = '';
-    try { body = await r.text(); } catch {}
-    throw new Error(`HTTP ${r.status} · ${body || r.statusText}`);
+  // If backend returns non‑JSON (e.g., 401 with html), avoid JSON parse blowups
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+
+  if (!res.ok) {
+    const msg = data?.error || `HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.payload = data;
+    throw err;
   }
-  const ct = r.headers.get('content-type') || '';
-  return ct.includes('application/json') ? r.json() : r.text();
+  return data;
 }
 
 export const api = {
-  async get(path, opts = {}) {
-    const r = await fetch(full(path), {
-      method: 'GET',
-      credentials: 'include',
-      ...opts,
-    });
-    return handle(r);
-  },
-  async post(path, data = {}, opts = {}) {
-    const r = await fetch(full(path), {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-      body: JSON.stringify(data),
-      ...opts,
-    });
-    return handle(r);
-  },
+  get:  (p)        => request(p),
+  post: (p, body)  => request(p, { method: "POST", body }),
+  put:  (p, body)  => request(p, { method: "PUT",  body }),
+  del:  (p, body)  => request(p, { method: "DELETE", body }),
 };
-
-export function getApiBase() { return BASE; } // handy for diagnostics

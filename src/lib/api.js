@@ -1,99 +1,65 @@
 // src/lib/api.js
-// Thin wrapper around fetch that automatically attaches the JWT from localStorage
-// and normalizes JSON handling & errors.
-
 import { API_BASE } from "./env";
 
-if (!API_BASE) {
-  // Helpful console hint during dev if the .env isn't set
-  // (doesn't break the build)
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[api] REACT_APP_API_BASE is not set. Set it in your .env (e.g. https://pub-game-backend.onrender.com)"
-  );
-}
+let TOKEN = null;
 
-/** Persist/remove the JWT */
-export function setToken(token) {
-  if (token) {
-    localStorage.setItem("token", token);
-  } else {
-    localStorage.removeItem("token");
-  }
+export function setToken(t) {
+  TOKEN = t || null;
+  if (t) localStorage.setItem("token", t);
+  else localStorage.removeItem("token");
 }
-
-/** Read the current JWT */
-export function getToken() {
-  return localStorage.getItem("token");
-}
-
-/** True if a token exists */
-export function isAuthed() {
-  return !!getToken();
-}
-
-/** Clear token helper */
-export function logout() {
+export function clearToken() {
   setToken(null);
 }
-
-/** Core request function */
-async function request(path, { method = "GET", headers = {}, body } = {}) {
-  const token = getToken();
-
-  // Compose headers
-  const finalHeaders = { ...headers };
-  if (token) finalHeaders.Authorization = `Bearer ${token}`;
-
-  const isFormData = body instanceof FormData;
-  if (!isFormData && body !== undefined && !finalHeaders["Content-Type"]) {
-    finalHeaders["Content-Type"] = "application/json";
-  }
-
-  // Build absolute URL
-  const base = (API_BASE || "").replace(/\/+$/, "");
-  const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
-
-  const res = await fetch(url, {
-    method,
-    headers: finalHeaders,
-    body:
-      body === undefined
-        ? undefined
-        : isFormData
-        ? body
-        : typeof body === "string"
-        ? body
-        : JSON.stringify(body),
-  });
-
-  // Try to parse JSON; fall back to text
-  const text = await res.text();
-  let data;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-
-  if (!res.ok) {
-    const msg =
-      (data && (data.error || data.message)) ||
-      `${res.status} ${res.statusText}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.payload = data;
-    throw err;
-  }
-
-  return data;
+export function getToken() {
+  return TOKEN || localStorage.getItem("token") || null;
 }
 
-// Export a simple API surface
-export const api = {
-  get: (path) => request(path),
-  post: (path, body) => request(path, { method: "POST", body }),
-  put: (path, body) => request(path, { method: "PUT", body }),
-  patch: (path, body) => request(path, { method: "PATCH", body }),
-  delete: (path) => request(path, { method: "DELETE" }),
-};
+function buildUrl(path) {
+  const base = (API_BASE || "").replace(/\/+$/, "");
+  const p = String(path || "").replace(/^\/+/, "");
+  return base ? `${base}/${p}` : `/${p}`;
+}
+
+async function request(path, { method = "GET", headers = {}, body, ...rest } = {}) {
+  const url = buildUrl(path);
+  const token = getToken();
+
+  const h = { "Content-Type": "application/json", ...headers };
+  if (token) h.Authorization = `Bearer ${token}`;
+
+  const opts = { method, headers: h, credentials: "include", ...rest };
+  if (body !== undefined) {
+    opts.body = typeof body === "string" ? body : JSON.stringify(body);
+  }
+
+  const res = await fetch(url, opts);
+
+  // Convert non-2xx into readable errors
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = JSON.parse(text);
+      if (j && j.error) msg += ` · ${JSON.stringify(j)}`;
+      else if (text) msg += ` · ${text}`;
+    } catch {
+      if (text) msg += ` · ${text}`;
+    }
+    throw new Error(msg);
+  }
+
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return res.json();
+  return res.text();
+}
+
+// Named helpers
+export const get  = (p, o = {})           => request(p, { ...o, method: "GET"  });
+export const post = (p, body, o = {})     => request(p, { ...o, method: "POST", body });
+export const put  = (p, body, o = {})     => request(p, { ...o, method: "PUT",  body });
+
+// Default callable export
+export default function api(path, opts) {
+  return request(path, opts);
+}

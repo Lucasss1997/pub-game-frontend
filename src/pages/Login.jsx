@@ -1,57 +1,60 @@
 // src/pages/Login.jsx
-import React, { useState } from "react";
-import api, { setToken } from "../lib/api";
-import "../ui/pubgame-theme.css";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { post, setToken } from '../lib/api';
+import '../ui/pubgame-theme.css';
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
+  const nav = useNavigate();
+  const [email, setEmail] = useState('new@pub.com');
+  const [password, setPassword] = useState('');
+  const [err, setErr] = useState('');
 
   async function onSubmit(e) {
     e.preventDefault();
-    setErr("");
+    setErr('');
     try {
-      const data = await api.post("/api/login", { email, password });
-      // backend returns { token } and also sets cookie; store token for headers
-      if (data?.token) setToken(data.token);
-      window.location.replace("/dashboard");
+      const { token } = await post('/api/login', { email, password });
+      setToken(token);
+      nav('/dashboard', { replace: true });
     } catch (e) {
-      setErr(e.message || "Login failed");
+      setErr(e.message || 'Login failed');
+    }
+  }
+
+  async function ensureUserOnce() {
+    setErr('');
+    try {
+      await post('/api/register', { email, password: password || 'changeme', pubName: 'New Pub' });
+      setErr('User ensured. Try logging in again.');
+    } catch (e) {
+      setErr(e.message || 'Failed to ensure user');
     }
   }
 
   return (
-    <div className="page page-center">
+    <div className="page-wrap">
       <div className="card">
         <h1 className="title">Sign In</h1>
 
-        {err && <div className="alert error">{err}</div>}
+        {err ? <div className="alert error">{err}</div> : null}
 
-        <form onSubmit={onSubmit} className="vstack gap-3">
-          <label className="field">
-            <span>Email</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
-          </label>
+        <form onSubmit={onSubmit}>
+          <div className="field">
+            <label>Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
 
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </label>
-
-          <button type="submit" className="btn solid">Login</button>
+          <div className="actions">
+            <button className="btn solid" type="submit">Login</button>
+            <button className="btn ghost" type="button" onClick={ensureUserOnce}>
+              Ensure user (once)
+            </button>
+          </div>
         </form>
       </div>
     </div>

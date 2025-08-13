@@ -1,26 +1,30 @@
-// src/pages/Admin.jsx
 import React, { useEffect, useState, useMemo } from 'react';
 import './admin.css';
 
-// ---- tiny fetch helper that respects your .env and cookies ----
+// -------- API base detection (works with your .env/window) --------
 const API_BASE =
-  // window-injected or multiple .env styles supported
   (typeof window !== 'undefined' && (window._APP_API_BASE || window.APP_API_BASE)) ||
   import.meta?.env?.VITE_APP_API_BASE ||
   process.env?.REACT_APP_API_BASE ||
   process.env?._APP_API_BASE ||
   '';
 
+// unified fetch: includes cookies AND Authorization if we have a token
 function apiFetch(path, opts = {}) {
   const url = `${API_BASE}${path}`;
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const token = localStorage.getItem('token'); // if present, send as Bearer
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(opts.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
   return fetch(url, { credentials: 'include', ...opts, headers });
 }
 
-// default products so the form always shows both games
+// show both products even if backend returns none
 const DEFAULT_PRODUCTS = [
-  { game_key: 'crack_safe',       name: 'Crack the Safe Ticket',      price: '0.00', active: true },
-  { game_key: 'whats_in_the_box', name: "What's in the Box Ticket",   price: '0.00', active: true },
+  { game_key: 'crack_safe',       name: 'Crack the Safe Ticket',    price: '0.00', active: true },
+  { game_key: 'whats_in_the_box', name: "What's in the Box Ticket", price: '0.00', active: true },
 ];
 
 export default function Admin() {
@@ -29,13 +33,11 @@ export default function Admin() {
   const [diag, setDiag] = useState('');
   const [jackpot, setJackpot] = useState('0.00');
 
-  // products keyed by game_key for easy editing
   const [products, setProducts] = useState(() => {
     const byKey = {};
     DEFAULT_PRODUCTS.forEach(p => { byKey[p.game_key] = { ...p }; });
     return byKey;
   });
-
   const productList = useMemo(() => Object.values(products), [products]);
 
   useEffect(() => {
@@ -44,34 +46,29 @@ export default function Admin() {
       setErr('');
       setDiag('');
       try {
-        // Load products
+        // products
         const pRes = await apiFetch('/api/admin/products');
-        if (!pRes.ok) throw await buildHttpError(pRes);
-        const pJson = await pRes.json(); // expect: [{game_key,name,price_cents,active}, ...]
+        if (!pRes.ok) throw await httpErr(pRes);
+        const pJson = await pRes.json();
         const next = { ...products };
         (Array.isArray(pJson) ? pJson : []).forEach(row => {
           const key = row.game_key;
-          const pounds = (row.price_cents ?? 0) / 100;
-          const price = pounds.toFixed(2);
+          const price = ((row.price_cents ?? 0) / 100).toFixed(2);
           next[key] = {
             game_key: key,
-            name: row.name || (products[key]?.name ?? ''),
+            name: row.name || next[key]?.name || '',
             price,
             active: !!row.active,
           };
         });
-        // ensure defaults exist
-        DEFAULT_PRODUCTS.forEach(p => {
-          if (!next[p.game_key]) next[p.game_key] = { ...p };
-        });
+        DEFAULT_PRODUCTS.forEach(p => { if (!next[p.game_key]) next[p.game_key] = { ...p }; });
         setProducts(next);
 
-        // Load jackpot
+        // jackpot
         const jRes = await apiFetch('/api/admin/jackpot');
-        if (!jRes.ok) throw await buildHttpError(jRes);
-        const jJson = await jRes.json(); // expect: {jackpot_cents:number}
-        const jp = ((jJson?.jackpot_cents ?? 0) / 100).toFixed(2);
-        setJackpot(jp);
+        if (!jRes.ok) throw await httpErr(jRes);
+        const jJson = await jRes.json();
+        setJackpot(((jJson?.jackpot_cents ?? 0) / 100).toFixed(2));
       } catch (e) {
         setErr(e.message || 'Load failed');
       } finally {
@@ -84,10 +81,11 @@ export default function Admin() {
   async function saveJackpot() {
     setErr('');
     try {
-      const body = JSON.stringify({ jackpot });
-      const res = await apiFetch('/api/admin/jackpot', { method: 'POST', body });
-      if (!res.ok) throw await buildHttpError(res);
-      // server returns cents; we normalize from what we sent
+      const res = await apiFetch('/api/admin/jackpot', {
+        method: 'POST',
+        body: JSON.stringify({ jackpot }),
+      });
+      if (!res.ok) throw await httpErr(res);
     } catch (e) {
       setErr(e.message || 'Save failed');
     }
@@ -97,10 +95,10 @@ export default function Admin() {
     setErr('');
     try {
       const payload = {
-        products: Object.values(products).map(p => ({
+        products: productList.map(p => ({
           game_key: p.game_key,
-          name: p.name?.trim() || '',
-          price: toMoneyString(p.price),
+          name: (p.name || '').trim(),
+          price: toMoney(p.price),
           active: !!p.active,
         })),
       };
@@ -108,7 +106,7 @@ export default function Admin() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw await buildHttpError(res);
+      if (!res.ok) throw await httpErr(res);
     } catch (e) {
       setErr(e.message || 'Save failed');
     }
@@ -119,34 +117,23 @@ export default function Admin() {
     setErr('');
     try {
       const res = await apiFetch('/api/admin/debug');
-      if (!res.ok) throw await buildHttpError(res);
-      const txt = await res.text();
-      setDiag(txt);
+      if (!res.ok) throw await httpErr(res);
+      setDiag(await res.text());
     } catch (e) {
       setErr(e.message || 'Debug failed');
     }
   }
 
-  // ---- UI helpers ----
   function setProductField(key, field, value) {
-    setProducts(prev => ({
-      ...prev,
-      [key]: { ...prev[key], [field]: value },
-    }));
+    setProducts(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
   }
-
-  function toMoneyString(v) {
-    // keep what the user typed but clean obvious symbols
-    const s = String(v ?? '').replace(/[£\s,]/g, '').trim();
-    if (s === '' || s === '.') return '0.00';
-    const num = Number(s);
-    if (Number.isNaN(num)) return '0.00';
-    return num.toFixed(2);
+  function toMoney(v) {
+    const s = String(v ?? '').replace(/[£,\s]/g, '').trim();
+    if (!s || s === '.') return '0.00';
+    const n = Number(s);
+    return Number.isFinite(n) ? n.toFixed(2) : '0.00';
   }
-
-  function go(path) {
-    window.location.assign(path);
-  }
+  function go(path) { window.location.assign(path); }
 
   return (
     <div className="admin-wrap">
@@ -157,70 +144,43 @@ export default function Admin() {
             <button className="btn ghost" onClick={() => go('/dashboard')}>Back to Dashboard</button>
             <button className="btn ghost" onClick={() => go('/pricing')}>New Game</button>
             <button className="btn ghost" onClick={() => go('/billing')}>Billing</button>
-            <button
-              className="btn danger"
-              onClick={async () => {
-                try {
-                  await apiFetch('/api/logout', { method: 'POST' });
-                } catch {}
-                go('/login');
-              }}
-            >
-              Logout
-            </button>
+            <button className="btn danger" onClick={async () => {
+              try { await apiFetch('/api/logout', { method: 'POST' }); } catch {}
+              go('/login');
+            }}>Logout</button>
           </div>
         </header>
 
         {loading && <div className="info">Loading…</div>}
-        {!!err && <div className="error">{err}</div>}
+        {err && <div className="error">{err}</div>}
 
         <div className="admin-toolbar">
           <button className="btn ghost" onClick={runDiagnostics}>Run diagnostics</button>
         </div>
-        {diag && (
-          <pre className="diag-box">
-{diag}
-          </pre>
-        )}
+        {diag && <pre className="diag-box">{diag}</pre>}
 
-        {/* Jackpot */}
         <section className="panel">
           <h2>Jackpot</h2>
           <label className="lbl">Jackpot (£)</label>
-          <input
-            className="input"
-            inputMode="decimal"
-            value={jackpot}
-            onChange={e => setJackpot(e.target.value)}
-            placeholder="0.00"
-          />
+          <input className="input" inputMode="decimal" value={jackpot}
+                 onChange={e => setJackpot(e.target.value)} placeholder="0.00" />
           <div className="row">
             <button className="btn" onClick={saveJackpot}>Save jackpot</button>
           </div>
         </section>
 
-        {/* Products */}
         <section className="panel">
           <h2>Crack the Safe</h2>
           <label className="lbl">Product name</label>
-          <input
-            className="input"
-            value={products.crack_safe?.name || ''}
-            onChange={e => setProductField('crack_safe', 'name', e.target.value)}
-          />
+          <input className="input" value={products.crack_safe?.name || ''}
+                 onChange={e => setProductField('crack_safe','name',e.target.value)} />
           <label className="lbl">Ticket price (£)</label>
-          <input
-            className="input"
-            inputMode="decimal"
-            value={products.crack_safe?.price || '0.00'}
-            onChange={e => setProductField('crack_safe', 'price', e.target.value)}
-          />
+          <input className="input" inputMode="decimal" value={products.crack_safe?.price || '0.00'}
+                 onChange={e => setProductField('crack_safe','price',e.target.value)} />
           <label className="lbl">Active</label>
-          <select
-            className="input"
-            value={products.crack_safe?.active ? 'yes' : 'no'}
-            onChange={e => setProductField('crack_safe', 'active', e.target.value === 'yes')}
-          >
+          <select className="input"
+                  value={products.crack_safe?.active ? 'yes':'no'}
+                  onChange={e => setProductField('crack_safe','active', e.target.value==='yes')}>
             <option value="yes">Yes</option>
             <option value="no">No</option>
           </select>
@@ -229,24 +189,15 @@ export default function Admin() {
         <section className="panel">
           <h2>What’s in the Box</h2>
           <label className="lbl">Product name</label>
-          <input
-            className="input"
-            value={products.whats_in_the_box?.name || ''}
-            onChange={e => setProductField('whats_in_the_box', 'name', e.target.value)}
-          />
+          <input className="input" value={products.whats_in_the_box?.name || ''}
+                 onChange={e => setProductField('whats_in_the_box','name',e.target.value)} />
           <label className="lbl">Ticket price (£)</label>
-          <input
-            className="input"
-            inputMode="decimal"
-            value={products.whats_in_the_box?.price || '0.00'}
-            onChange={e => setProductField('whats_in_the_box', 'price', e.target.value)}
-          />
+          <input className="input" inputMode="decimal" value={products.whats_in_the_box?.price || '0.00'}
+                 onChange={e => setProductField('whats_in_the_box','price',e.target.value)} />
           <label className="lbl">Active</label>
-          <select
-            className="input"
-            value={products.whats_in_the_box?.active ? 'yes' : 'no'}
-            onChange={e => setProductField('whats_in_the_box', 'active', e.target.value === 'yes')}
-          >
+          <select className="input"
+                  value={products.whats_in_the_box?.active ? 'yes':'no'}
+                  onChange={e => setProductField('whats_in_the_box','active', e.target.value==='yes')}>
             <option value="yes">Yes</option>
             <option value="no">No</option>
           </select>
@@ -260,12 +211,11 @@ export default function Admin() {
   );
 }
 
-// build nice HTTP error messages like "HTTP 404 · Not found"
-async function buildHttpError(res) {
+async function httpErr(res) {
   let msg = `HTTP ${res.status}`;
   try {
     const ct = res.headers.get('content-type') || '';
-    if (ct.includes('application/json')) {
+    if (ct.includes('json')) {
       const j = await res.json();
       if (j?.error) msg += ` · ${JSON.stringify(j)}`;
     } else {

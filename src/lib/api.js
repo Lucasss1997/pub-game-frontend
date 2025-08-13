@@ -2,19 +2,16 @@
 import { API_BASE } from './env';
 
 export async function api(path, options = {}) {
-  const base = (API_BASE || '').replace(/\/+$/, '');
-  const url  = base + path;
-
+  const url = API_BASE + path;
   const token = localStorage.getItem('token');
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
 
   const res = await fetch(url, {
     method: options.method || 'GET',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     credentials: 'include',
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
@@ -23,16 +20,8 @@ export async function api(path, options = {}) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} · ${txt || res.statusText}`);
   }
-
-  // Some endpoints may return empty; guard JSON parse.
-  const text = await res.text();
-  if (!text) return {};
-  try { return JSON.parse(text); } catch { return {}; }
+  try { return await res.json(); } catch { return {}; }
 }
 
-export function setToken(token) {
-  if (token) localStorage.setItem('token', token);
-}
-export function clearToken() {
-  localStorage.removeItem('token');
-}
+export function setToken(token) { if (token) localStorage.setItem('token', token); }
+export function clearToken()     { localStorage.removeItem('token'); }

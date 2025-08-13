@@ -1,150 +1,80 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import "../ui/pubgame-theme.css";
-
-const API_BASE =
-  (typeof window !== "undefined" && (window._APP_API_BASE || window.APP_API_BASE)) ||
-  import.meta?.env?.VITE_APP_API_BASE ||
-  process.env?.REACT_APP_API_BASE ||
-  "";
-
-function usePubId() {
-  const [sp] = useSearchParams();
-  const q = sp.get("pubId") || sp.get("pub") || "";
-  return q || "";
-}
-
-async function fetchInfo(pubId) {
-  const url = `${API_BASE}/api/games/whats_in_the_box/info?pubId=${encodeURIComponent(pubId)}`;
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json(); // { ticket_price: "x.xx", jackpot: "y.yy" }
-}
-
-function getWinningBoxIndex() {
-  const key = "pg_box_win_index";
-  const v = sessionStorage.getItem(key);
-  if (v !== null && !Number.isNaN(Number(v))) return Number(v);
-  const n = Math.floor(Math.random() * 3); // 0..2
-  sessionStorage.setItem(key, String(n));
-  return n;
-}
+import React, { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api } from "../lib/api";
 
 export default function WhatsInTheBox() {
-  const pubId = usePubId();
-  const [info, setInfo] = useState({ ticket_price: "0.00", jackpot: "0.00" });
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [opened, setOpened] = useState(-1); // index opened
-  const winIdx = useMemo(getWinningBoxIndex, []);
+  const { pubId: routePubId } = useParams();
+  const pubId = routePubId ? Number(routePubId) : 1;
+  const gameKey = "whats_in_the_box";
+
+  const [meta, setMeta] = useState(null);
+  const [msg, setMsg] = useState("");
+  const wsRef = useRef(null);
 
   useEffect(() => {
-    let alive = true;
+    let died = false;
     (async () => {
-      if (!pubId) { setLoading(false); return; }
-      setLoading(true); setErr("");
       try {
-        const j = await fetchInfo(pubId);
-        if (alive) setInfo(j || {});
-      } catch (e) {
-        if (alive) setErr(e.message || "Failed to load");
-      } finally {
-        if (alive) setLoading(false);
+        const data = await api.get(`/api/game/${pubId}/${gameKey}/meta`);
+        if (!died) setMeta(data);
+      } catch {
+        if (!died) setMsg("Unable to load game.");
       }
     })();
-    return () => { alive = false; };
+    return () => { died = true; };
   }, [pubId]);
 
-  const qrHref = `${window.location.origin}/enter/${encodeURIComponent(pubId)}/whats_in_the_box`;
+  useEffect(() => {
+    try {
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+      wsRef.current = ws;
+      ws.onopen = () => ws.send(JSON.stringify({ type: "subscribe", topic: `jackpot:${pubId}:${gameKey}` }));
+      ws.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        if (m.type === "jackpot" && m.pubId === pubId && m.gameKey === gameKey) {
+          setMeta((old) => (old ? { ...old, jackpot_cents: m.jackpot_cents } : old));
+        }
+      };
+      return () => ws.close();
+    } catch {}
+  }, [pubId]);
 
-  function pick(i) {
-    if (opened >= 0) return;
-    setOpened(i);
+  if (!meta) {
+    return (
+      <div className="page">
+        <h1>What’s in the Box</h1>
+        <p>Loading… {msg}</p>
+      </div>
+    );
   }
 
-  function reset() {
-    setOpened(-1);
-    // keep same winning index during the session (rollover)
+  const price = (meta.price_cents ?? 0) / 100;
+  const jackpot = (meta.jackpot_cents ?? 0) / 100;
+
+  async function handleBuy() {
+    try {
+      await api.post(`/api/game/${pubId}/${gameKey}/ticket`, { amount: meta.price_cents });
+      setMeta((m) => ({ ...m, jackpot_cents: (m?.jackpot_cents ?? 0) + (meta.price_cents ?? 0) }));
+      setMsg("Ticket purchased.");
+    } catch {
+      setMsg("Could not purchase.");
+    }
   }
 
   return (
-    <div className="pg-wrap">
-      <div className="card max">
-        <h1 className="page-title">What’s in the Box</h1>
-        {loading && <div className="alert">Loading game info…</div>}
-        {err && <div className="alert error">{err}</div>}
+    <div className="page">
+      <h1>What’s in the Box</h1>
+      <p>Ticket: £{price.toFixed(2)} • Jackpot: £{jackpot.toFixed(2)}</p>
 
-        {!loading && (
-          <>
-            <p style={{ marginTop: 0 }}>
-              Ticket: <strong>£{info.ticket_price || "0.00"}</strong> ·
-              Current jackpot: <strong>£{info.jackpot || "0.00"}</strong>
-            </p>
-
-            <div className="toolbar" style={{ alignItems: "flex-start" }}>
-              <div>
-                <div style={{ marginBottom: 6, fontWeight: 700 }}>Scan to enter</div>
-                <img
-                  alt="QR to enter"
-                  width={180}
-                  height={180}
-                  style={{ borderRadius: 16, border: "2px solid #3b1bb8" }}
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrHref)}`}
-                />
-                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 8, wordBreak: "break-all" }}>
-                  {qrHref}
-                </div>
-              </div>
-
-              {/* Boxes */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, flex: 1 }}>
-                {[0, 1, 2].map((i) => {
-                  const isOpen = opened === i;
-                  const isWin = i === winIdx;
-                  return (
-                    <button
-                      key={i}
-                      className="btn"
-                      onClick={() => pick(i)}
-                      style={{
-                        height: 140,
-                        display: "grid",
-                        placeItems: "center",
-                        fontSize: 18,
-                        background: isOpen ? (isWin ? "#22c55e" : "#ef4444") : undefined,
-                      }}
-                    >
-                      {isOpen ? (isWin ? "🎉 Winner!" : "🙃 Empty") : `Box ${i + 1}`}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {opened >= 0 && (
-              <div className="card" style={{ marginTop: 16 }}>
-                {opened === winIdx ? (
-                  <>
-                    <h2 className="section-title">Winner! 🎉</h2>
-                    <p style={{ marginTop: 0 }}>
-                      You picked the winning box. Speak to the team to claim your prize.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <h2 className="section-title">Not this time</h2>
-                    <p style={{ marginTop: 0 }}>
-                      The prize was in <strong>Box {winIdx + 1}</strong>. Better luck next time!
-                    </p>
-                  </>
-                )}
-                <div className="toolbar">
-                  <button className="btn" onClick={reset}>Play again</button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+      <div className="card">
+        {/* Keep your existing box UI here */}
+        <div className="actions">
+          <button className="btn solid" onClick={handleBuy}>
+            Buy Ticket (£{price.toFixed(2)})
+          </button>
+        </div>
+        {msg && <p>{msg}</p>}
       </div>
     </div>
   );

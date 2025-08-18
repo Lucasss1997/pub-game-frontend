@@ -1,112 +1,80 @@
 // src/lib/api.js
-// Central HTTP helper used across the app.
-// Exports BOTH a named `api` and a default export, plus verb helpers
-// and a few convenience functions (getAdminConfig, saveJackpot, etc.).
+import { API_BASE } from './env';
+import { getToken, setToken as _setToken, clearToken as _clearToken } from './auth';
 
-/* ================= Base ================= */
-const BASE = (process.env.REACT_APP_API_BASE || '').replace(/\/+$/, '');
+// Join base + path safely
+function join(base, path) {
+  if (!path) return base;
+  if (/^https?:/i.test(path)) return path;            // absolute URL
+  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
 
-/* ================= Core fetch wrapper ================= */
-async function request(path, {
-  method = 'GET',
-  body,
-  headers = {},
-  auth = true,
-} = {}) {
-  const url = path.startsWith('http') ? path : `${BASE}${path}`;
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json', ...headers },
-  };
+// Core request wrapper (JSON by default)
+export async function request(path, opts = {}) {
+  const url = join(API_BASE || '', path);
 
-  if (auth) {
-    const t = localStorage.getItem('token');
-    if (t) opts.headers.Authorization = `Bearer ${t}`;
+  const headers = new Headers(opts.headers || {});
+  if (!headers.has('Content-Type') && opts.body && typeof opts.body === 'object') {
+    headers.set('Content-Type', 'application/json');
   }
 
-  if (body !== undefined) {
-    opts.body = typeof body === 'string' ? body : JSON.stringify(body);
-  }
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(url, opts);
-  const text = await res.text();
+  const response = await fetch(url, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body && typeof opts.body === 'object' && headers.get('Content-Type')?.includes('application/json')
+      ? JSON.stringify(opts.body)
+      : opts.body || undefined,
+    credentials: 'include',
+  });
 
-  let data;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  const ctype = response.headers.get('content-type') || '';
+  const data  = ctype.includes('application/json') ? await response.json() : await response.text();
 
-  if (!res.ok) {
-    const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.payload = data;
+  if (!response.ok) {
+    const err = new Error(data?.error || data?.message || `HTTP ${response.status}`);
+    err.status = response.status;
+    err.data   = data;
     throw err;
   }
   return data;
 }
 
-/* ================= Auth helpers ================= */
-export function setToken(token) {
-  if (token) localStorage.setItem('token', token);
-  else localStorage.removeItem('token');
+// ---- convenient verbs
+export const get = (path, opts = {}) => request(path, { ...opts, method: 'GET' });
+export const post = (path, body, opts = {}) => request(path, { ...opts, method: 'POST', body });
+export const put  = (path, body, opts = {}) => request(path, { ...opts, method: 'PUT',  body });
+export const del  = (path, opts = {}) => request(path, { ...opts, method: 'DELETE' });
+
+// ---- auth helpers (re-exported so pages can import from ../lib/api)
+export const setToken   = (t) => _setToken(t);
+export const clearToken = () => _clearToken();
+
+// ---- admin helpers expected by pages
+export async function getAdminConfig() {
+  // Backend should return: { products:[...], jackpots:{crack_safe: cents, whats_in_box: cents}, ... }
+  return get('/api/admin/config');
 }
-export function clearToken() { setToken(''); }
 
-/* ================= Verb helpers ================= */
-export const get  = (path, opts = {})            => request(path, { ...opts, method: 'GET' });
-export const post = (path, body, opts = {})      => request(path, { ...opts, method: 'POST', body });
-export const put  = (path, body, opts = {})      => request(path, { ...opts, method: 'PUT', body });
-export const del  = (path, opts = {})            => request(path, { ...opts, method: 'DELETE' });
+export async function saveJackpot(gameKey, pounds) {
+  const cents = Math.round(parseFloat(pounds || '0') * 100);
+  return post('/api/admin/jackpot', { game_key: gameKey, jackpot_cents: cents });
+}
 
-/* ================= Convenience API calls ================= */
-/* Auth */
-export const login     = (email, password)  => post('/api/login',    { email, password }, { auth: false });
-export const register  = (payload)          => post('/api/register', payload,              { auth: false });
-export const me        = ()                 => get('/api/me');
+export async function saveProduct(gameKey, product) {
+  // product: { id?, name, price_pounds, active }
+  const body = {
+    game_key: gameKey,
+    name: product.name,
+    price_cents: Math.round(parseFloat(product.price_pounds || '0') * 100),
+    active: !!product.active,
+    id: product.id ?? undefined,
+  };
+  return post('/api/admin/product', body);
+}
 
-/* Dashboard */
-export const fetchDashboard = ()            => get('/api/dashboard');
-
-/* Admin – products & jackpots
-   NOTE: These are thin wrappers; adjust paths if your backend differs. */
-export const getAdminConfig = ()            => get('/api/admin/products');
-
-/** Update/create a product for a gameKey.
- *  `product` example: { name: '£1 Standard Entry', price_pounds: 1.00, active: true }
- */
-export const saveProduct = (gameKey, product) =>
-  put(`/api/admin/product/${encodeURIComponent(gameKey)}`, product);
-
-/** Save jackpot for a gameKey in *pounds* (frontend sends pounds, backend may store cents). */
-export const saveJackpot = (gameKey, jackpot_pounds) =>
-  post('/api/admin/jackpot', { game_key: gameKey, jackpot_pounds });
-
-/* Games (public/player) */
-export const fetchGamePublic = (pubId, gameKey) =>
-  get(`/api/game/${encodeURIComponent(pubId)}/${encodeURIComponent(gameKey)}`);
-
-/* Staff */
-export const staffAssistEntry = (payload) => post('/api/staff/assist-entry', payload);
-
-/* Billing (stub helpers) */
-export const fetchBilling = () => get('/api/billing');
-
-/* Optional: create new game (admin) */
-export const createGame = (payload) => post('/api/admin/game', payload);
-
-/* ================= Aggregate export object ================= */
-export const api = {
-  BASE,
-  request,
-  get, post, put, del,
-  setToken, clearToken,
-  // convenience
-  login, register, me,
-  fetchDashboard,
-  getAdminConfig, saveProduct, saveJackpot,
-  fetchGamePublic,
-  staffAssistEntry,
-  fetchBilling,
-  createGame,
-};
-
+// Provide a default export for legacy imports: `import api from '../lib/api'`
+const api = { request, get, post, put, del, setToken, clearToken, getAdminConfig, saveJackpot, saveProduct };
 export default api;

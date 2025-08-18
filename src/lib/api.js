@@ -1,103 +1,86 @@
 // src/lib/api.js
-// Central API helper
+// Minimal, universal API helper used across the app.
 
-import { API_BASE } from './env';
+import { API_BASE } from "./env";
 
-const BASE = (API_BASE || '').replace(/\/+$/, '');
+// --- token helpers -----------------------------------------------------------
+let _token = localStorage.getItem("token") || "";
 
-function authHeaders() {
-  const h = { 'Content-Type': 'application/json' };
-  const t = localStorage.getItem('token');
-  if (t) h.Authorization = `Bearer ${t}`;
-  return h;
+export function setToken(t) {
+  _token = t || "";
+  if (_token) localStorage.setItem("token", _token);
+  else localStorage.removeItem("token");
 }
 
-async function req(path, opts = {}) {
-  const url = `${BASE}${path}`;
-  const res = await fetch(url, {
-    credentials: 'include', // allow cookies
-    headers: { ...authHeaders(), ...(opts.headers || {}) },
-    ...opts,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} ${text}`);
+export function clearToken() {
+  setToken("");
+}
+
+// --- core request ------------------------------------------------------------
+async function request(path, { method = "GET", body, headers = {} } = {}) {
+  // allow absolute or relative paths
+  const url =
+    /^https?:/i.test(path)
+      ? path
+      : `${(API_BASE || "").replace(/\/+$/, "")}${path}`;
+
+  const opts = { method, headers: { ...headers } };
+
+  if (_token) opts.headers.Authorization = `Bearer ${_token}`;
+
+  if (body !== undefined) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = typeof body === "string" ? body : JSON.stringify(body);
   }
-  if (res.status === 204) return null;
-  const ct = res.headers.get('content-type') || '';
-  return ct.includes('application/json') ? res.json() : res.text();
-}
 
-// ---- Auth
-export function setToken(token) {
-  if (token) localStorage.setItem('token', token);
-  else localStorage.removeItem('token');
-}
-export function clearToken() { setToken(''); }
-export async function login(email, password) {
-  const data = await req('/api/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  });
-  if (data?.token) setToken(data.token);
+  const res = await fetch(url, opts);
+
+  // Try to parse JSON, but fall back to text for non-JSON responses
+  const text = await res.text();
+  const data = text
+    ? (() => {
+        try { return JSON.parse(text); } catch { return text; }
+      })()
+    : null;
+
+  if (!res.ok) {
+    const msg =
+      (data && data.error) ||
+      (data && data.message) ||
+      `${res.status} ${res.statusText}`;
+    throw new Error(msg);
+  }
   return data;
 }
 
-// ---- Admin & config
-export async function getAdminConfig() {
-  return req('/api/admin/config');
-}
-export async function saveProduct({ game_key, name, price_pounds, active }) {
-  return req('/api/admin/product', {
-    method: 'POST',
-    body: JSON.stringify({ game_key, name, price_pounds, active }),
-  });
-}
-export async function saveJackpot({ game_key, jackpot }) {
-  return req('/api/admin/jackpot', {
-    method: 'POST',
-    body: JSON.stringify({ game_key, jackpot }),
-  });
-}
-export async function getDashboard() {
-  return req('/api/dashboard');
-}
+// --- convenient verbs --------------------------------------------------------
+export const get  = (path, opts = {}) => request(path, { ...opts, method: "GET" });
+export const post = (path, body, opts = {}) => request(path, { ...opts, method: "POST", body });
+export const put  = (path, body, opts = {}) => request(path, { ...opts, method: "PUT", body });
+export const del  = (path, opts = {}) => request(path, { ...opts, method: "DELETE" });
 
-// ---- Play
-export async function startGame({ game_key, ticket_price_pounds }) {
-  return req('/api/game/start', {
-    method: 'POST',
-    body: JSON.stringify({ game_key, ticket_price_pounds }),
-  });
-}
-export async function endGame({ game_key, winner_id = null, email_breakdown = false }) {
-  return req('/api/game/end', {
-    method: 'POST',
-    body: JSON.stringify({ game_key, winner_id, email_breakdown }),
-  });
-}
+// --- admin helpers (used by Admin.jsx) --------------------------------------
+// Returns config including per-game jackpots map:
+// { jackpots: { crack_the_safe: 12345, whats_in_the_box: 67890 }, ... }
+export const getAdminConfig = () => get("/api/admin/config");
 
-// Convenience verbs
-export const get  = (p, o) => req(p, { method: 'GET', ...(o || {}) });
-export const post = (p, b, o) => req(p, { method: 'POST', body: JSON.stringify(b || {}), ...(o || {}) });
-export const put  = (p, b, o) => req(p, { method: 'PUT',  body: JSON.stringify(b || {}), ...(o || {}) });
-export const del  = (p, o) => req(p, { method: 'DELETE', ...(o || {}) });
+// Save per-game jackpot in *pounds* (string or number e.g. "1.50")
+export const saveJackpot = (gameKey, pounds) =>
+  post(`/api/admin/jackpot/${encodeURIComponent(gameKey)}`, { pounds });
 
-// ---- Build a default object so `import api from '../lib/api'` works
+// Each game has one product (entry option)
+export const getProduct = (gameKey) =>
+  get(`/api/admin/product/${encodeURIComponent(gameKey)}`);
+// Payload shape: { name, price_pounds, active }
+export const saveProduct = (gameKey, product) =>
+  post(`/api/admin/product/${encodeURIComponent(gameKey)}`, product);
+
+// --- default + named export for compatibility with ALL import styles --------
 const api = {
-  login,
-  setToken,
-  clearToken,
-  getAdminConfig,
-  saveProduct,
-  saveJackpot,
-  getDashboard,
-  startGame,
-  endGame,
-  get,
-  post,
-  put,
-  del,
+  get, post, put, del,
+  setToken, clearToken,
+  getAdminConfig, saveJackpot, getProduct, saveProduct,
 };
 
-export default api;
+export default api;         // allows: import api from '../lib/api'
+export { api };            // allows: import { api } from '../lib/api'

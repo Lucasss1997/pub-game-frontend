@@ -1,7 +1,9 @@
 // src/lib/api.js
+// Minimal, universal API helper used across the app.
+
 import { API_BASE } from "./env";
 
-// keep token in memory + localStorage
+// --- token helpers -----------------------------------------------------------
 let _token = localStorage.getItem("token") || "";
 
 export function setToken(t) {
@@ -9,61 +11,66 @@ export function setToken(t) {
   if (_token) localStorage.setItem("token", _token);
   else localStorage.removeItem("token");
 }
-export function clearToken() { setToken(""); }
-export function getToken() { return _token; }
 
-// build URL against API_BASE and optionally append ?t=token
-function buildUrl(path) {
-  const full = path.startsWith("http") ? path : `${API_BASE}${path}`;
-  try {
-    const u = new URL(full);
-    if (_token) u.searchParams.set("t", _token); // helpful for some backends
-    return u.toString();
-  } catch {
-    // if API_BASE missing, this will show up as an obvious error
-    return full;
-  }
+export function clearToken() {
+  setToken("");
 }
 
-// central fetch wrapper
+// --- core request ------------------------------------------------------------
 async function request(path, { method = "GET", body, headers = {} } = {}) {
-  const url = buildUrl(path);
-  const h = { "Content-Type": "application/json", ...headers };
+  // allow absolute or relative paths
+  const url =
+    /^https?:/i.test(path)
+      ? path
+      : `${(API_BASE || "").replace(/\/+$/, "")}${path}`;
 
-  // attach token in multiple ways to satisfy any backend check
-  if (_token) {
-    h.Authorization = `Bearer ${_token}`;
-    h["x-auth-token"] = _token;
+  const opts = { method, headers: { ...headers } };
+
+  if (_token) opts.headers.Authorization = `Bearer ${_token}`;
+
+  if (body !== undefined) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = typeof body === "string" ? body : JSON.stringify(body);
   }
 
-  const res = await fetch(url, {
-    method,
-    headers: h,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: "include", // send cookies if server uses sessions
-  });
+  const res = await fetch(url, opts);
+
+  // Try to parse JSON, but fall back to text for non-JSON responses
+  const text = await res.text();
+  const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
 
   if (!res.ok) {
-    let detail = "";
-    try { detail = " · " + JSON.stringify(await res.json()); } catch {}
-    throw new Error(`HTTP ${res.status}${detail}`);
+    const msg =
+      (data && data.error) ||
+      (data && data.message) ||
+      `${res.status} ${res.statusText}`;
+    throw new Error(msg);
   }
-  if (res.status === 204) return null;
-  return res.json();
+  return data;
 }
 
-// convenient verbs
-export const get  = (p, opts = {})            => request(p, { ...opts, method: "GET" });
-export const post = (p, body, opts = {})      => request(p, { ...opts, method: "POST", body });
-export const put  = (p, body, opts = {})      => request(p, { ...opts, method: "PUT",  body });
-export const del  = (p, opts = {})            => request(p, { ...opts, method: "DELETE" });
+// --- convenient verbs --------------------------------------------------------
+export const get  = (path, opts = {}) => request(path, { ...opts, method: "GET" });
+export const post = (path, body, opts = {}) => request(path, { ...opts, method: "POST", body });
+export const put  = (path, body, opts = {}) => request(path, { ...opts, method: "PUT", body });
+export const del  = (path, opts = {}) => request(path, { ...opts, method: "DELETE" });
 
-// specific helpers
+// --- admin helpers (used by Admin.jsx) --------------------------------------
+// Returns config including per-game jackpots map:
+// { jackpots: { crack_the_safe: 12345, whats_in_the_box: 67890 }, ... }
 export const getAdminConfig = () => get("/api/admin/config");
-export const saveJackpot     = (gameKey, pounds) =>
-  post(`/api/admin/jackpot/${gameKey}`, { pounds });
 
-// default + named exports (so both import styles work)
-const api = { get, post, put, del, getAdminConfig, saveJackpot, setToken, clearToken, getToken };
+// Save per-game jackpot in *pounds* (string or number e.g. "1.50")
+export const saveJackpot = (gameKey, pounds) =>
+  post(`/api/admin/jackpot/${encodeURIComponent(gameKey)}`, { pounds });
+
+// Each game has one product (entry option)
+export const getProduct = (gameKey) =>
+  get(`/api/admin/product/${encodeURIComponent(gameKey)}`);
+// Payload shape: { name, price_pounds, active }
+export const saveProduct = (gameKey, product) =>
+  post(`/api/admin/product/${encodeURIComponent(gameKey)}`, product);
+
+// --- legacy default export so code can do `import api from '../lib/api'`
+const api = { get, post, put, del, setToken, clearToken, getAdminConfig, saveJackpot, getProduct, saveProduct };
 export default api;
-export { api };

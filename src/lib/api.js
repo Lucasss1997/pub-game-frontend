@@ -1,83 +1,105 @@
 // src/lib/api.js
+// One canonical API helper.  Works with either Bearer token (localStorage "token")
+// or cookie-based auth.  All routes use JSON.
+
 import { API_BASE } from './env';
 
-/**
- * Minimal fetch wrapper with token support.
- * Works with both default and named imports.
- */
+const BASE = (API_BASE || '').replace(/\/+$/, '');
 
-let authToken = localStorage.getItem('token') || '';
-
-export function setToken(t) {
-  authToken = t || '';
-  if (t) localStorage.setItem('token', t);
-  else   localStorage.removeItem('token');
+function authHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  const t = localStorage.getItem('token');
+  if (t) h.Authorization = `Bearer ${t}`;
+  return h;
 }
 
-export function clearToken() {
-  setToken('');
-}
-
-async function request(path, { method = 'GET', body, headers = {}, ...rest } = {}) {
-  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
-  const init = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...headers,
-    },
-    ...rest,
-  };
-  if (body !== undefined) init.body = typeof body === 'string' ? body : JSON.stringify(body);
-
-  const res = await fetch(url, init);
-  const text = await res.text();
-
-  let data;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-
+async function req(path, opts = {}) {
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, {
+    credentials: 'include',        // supports cookie auth too
+    headers: { ...authHeaders(), ...(opts.headers || {}) },
+    ...opts,
+  });
   if (!res.ok) {
-    const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
-    const err = new Error(msg);
+    const text = await res.text().catch(() => '');
+    const err = new Error(`HTTP ${res.status}${text ? ` · ${text}` : ''}`);
     err.status = res.status;
-    err.data = data;
+    err.body = text;
     throw err;
   }
+  // Some endpoints may return 204
+  if (res.status === 204) return null;
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : res.text();
+}
+
+// ---- Auth helpers
+export function setToken(token) {
+  if (token) localStorage.setItem('token', token);
+  else localStorage.removeItem('token');
+}
+export function clearToken() { setToken(''); }
+
+export async function login(email, password) {
+  const data = await req('/api/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  if (data?.token) setToken(data.token);
   return data;
 }
 
-// ---- convenient verbs
-export const get = (path, opts = {})            => request(path, { ...opts, method: 'GET' });
-export const post = (path, body, opts = {})     => request(path, { ...opts, method: 'POST', body });
-export const put  = (path, body, opts = {})     => request(path, { ...opts, method: 'PUT',  body });
-export const del  = (path, opts = {})           => request(path, { ...opts, method: 'DELETE' });
-
-// ---- admin helpers
+// ---- Admin & config
 export async function getAdminConfig() {
-  // Returns the products (if any) and jackpots for both games
-  return get('/api/admin/config');
+  return req('/api/admin/config');
+}
+export async function saveProduct({ game_key, name, price_pounds, active }) {
+  return req('/api/admin/product', {
+    method: 'POST',
+    body: JSON.stringify({ game_key, name, price_pounds, active }),
+  });
+}
+export async function saveJackpot({ game_key, jackpot }) {
+  return req('/api/admin/jackpot', {
+    method: 'POST',
+    body: JSON.stringify({ game_key, jackpot }),
+  });
+}
+export async function getDashboard() {
+  return req('/api/dashboard');
 }
 
-export async function saveJackpot(gameKey, pounds) {
-  const cents = Math.round((Number(pounds) || 0) * 100);
-  return post('/api/admin/jackpot', { gameKey, jackpot_cents: cents });
+// ---- Play flow
+export async function startGame({ game_key, ticket_price_pounds }) {
+  return req('/api/game/start', {
+    method: 'POST',
+    body: JSON.stringify({ game_key, ticket_price_pounds }),
+  });
+}
+export async function endGame({ game_key, winner_id = null, email_breakdown = false }) {
+  return req('/api/game/end', {
+    method: 'POST',
+    body: JSON.stringify({ game_key, winner_id, email_breakdown }),
+  });
 }
 
-export async function saveProduct(gameKey, product) {
-  // product: { name, price_pounds, active }
-  const body = {
-    gameKey,
-    name: product.name,
-    price_cents: Math.round((Number(product.price_pounds) || 0) * 100),
-    active: !!product.active,
-  };
-  return post('/api/admin/product', body);
-}
+// Convenience verbs (if you still need them)
+export const get  = (p, o) => req(p, { method: 'GET', ...(o || {}) });
+export const post = (p, b, o) => req(p, { method: 'POST', body: JSON.stringify(b || {}), ...(o || {}) });
+export const put  = (p, b, o) => req(p, { method: 'PUT',  body: JSON.stringify(b || {}), ...(o || {}) });
+export const del  = (p, o) => req(p, { method: 'DELETE', ...(o || {}) });
 
-// --- legacy/ergonomic export objects
-const api = { get, post, put, del, setToken, clearToken, getAdminConfig, saveJackpot, saveProduct };
-
-// Export **both** ways so all existing imports succeed
-export { api };
+// Default export so `import api from '../lib/api'` ALSO works:
+const api = {
+  login,
+  setToken,
+  clearToken,
+  getAdminConfig,
+  saveProduct,
+  saveJackpot,
+  getDashboard,
+  startGame,
+  endGame,
+  get, post, put, del,
+};
 export default api;

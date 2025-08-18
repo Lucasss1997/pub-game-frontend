@@ -1,64 +1,65 @@
 // src/pages/Login.jsx
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api, { setToken } from "../lib/api";
+import { API_BASE } from "../lib/env";
 import "../ui/pubgame-theme.css";
 
 export default function Login() {
   const nav = useNavigate();
   const [email, setEmail] = useState("new@pub.com");
   const [password, setPassword] = useState("password");
-  const [banner, setBanner] = useState("");
+  const [msg, setMsg] = useState("");
 
-  // Soft health check (non-blocking)
-  useEffect(() => {
-    let on = true;
-    (async () => {
-      try {
-        await api.get("/healthz");
-      } catch (e) {
-        if (!on) return;
-        // show a small warning but do not block login
-        setBanner("Load failed");
-        setTimeout(() => setBanner(""), 3000);
-        console.warn("Health check failed:", e?.message || e);
-      }
-    })();
-    return () => { on = false; };
-  }, []);
+  const apiURL = (p) => {
+    const base = (API_BASE || "").replace(/\/+$/, "");
+    return base + p;
+  };
 
-  async function handleLogin(e) {
+  async function login(e) {
     e.preventDefault();
-    setBanner("");
+    setMsg("");
     try {
-      const res = await api.post("/api/login", { email, password });
-      // expect { token: "..." }
-      if (res && res.token) {
-        setToken(res.token);
-        nav("/dashboard", { replace: true });
-      } else {
-        throw new Error("No token returned");
-      }
+      const res = await fetch(apiURL("/api/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+      const token = data?.token;
+      if (!token) throw new Error("No token returned");
+      localStorage.setItem("token", token);
+      nav("/dashboard", { replace: true });
     } catch (err) {
-      setBanner(err?.message || "Login failed");
+      console.error("LOGIN ERROR:", err);
+      setMsg(err?.message || "Login failed");
     }
   }
 
-  // One-time seeding helper (tries two possible endpoints)
   async function ensureUserOnce() {
-    setBanner("");
+    setMsg("");
+    const payload = { email, password };
     try {
-      await api.post("/api/ensure-user", { email, password });
-      setBanner("User ensured");
-    } catch (e1) {
-      try {
-        await api.post("/api/admin/ensure-user", { email, password });
-        setBanner("User ensured");
-      } catch (e2) {
-        setBanner(e2?.message || e1?.message || "Ensure user failed");
+      // Try /api/ensure-user then /api/admin/ensure-user
+      let res = await fetch(apiURL("/api/ensure-user"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        res = await fetch(apiURL("/api/admin/ensure-user"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
       }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+      setMsg("User ensured. Now press Login.");
+    } catch (err) {
+      console.error("ENSURE USER ERROR:", err);
+      setMsg(err?.message || "Ensure user failed");
     }
-    setTimeout(() => setBanner(""), 3000);
   }
 
   return (
@@ -66,9 +67,9 @@ export default function Login() {
       <div className="pg-card">
         <h1 className="pg-title">Sign In</h1>
 
-        {banner && <div className="pg-alert pg-alert-error">{banner}</div>}
+        {msg ? <div className="pg-alert pg-alert-error">{msg}</div> : null}
 
-        <form onSubmit={handleLogin}>
+        <form onSubmit={login}>
           <label className="pg-label">Email</label>
           <input
             className="pg-input"
@@ -91,16 +92,16 @@ export default function Login() {
             <button className="pg-btn pg-btn-primary" type="submit">
               Login
             </button>
-            <button
-              className="pg-btn"
-              type="button"
-              onClick={ensureUserOnce}
-              title="Create the user if it doesn't exist"
-            >
-              Ensure User (once)
+            <button className="pg-btn" type="button" onClick={ensureUserOnce}>
+              Ensure user (once)
             </button>
           </div>
         </form>
+
+        {/* Tiny debug line — shows which API base we’re posting to */}
+        <div style={{ opacity: 0.6, fontSize: 12, marginTop: 8 }}>
+          API: {API_BASE || "(not set)"}
+        </div>
       </div>
     </div>
   );

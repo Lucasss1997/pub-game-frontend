@@ -1,12 +1,28 @@
-// Single source of truth for env values (no import.meta anywhere).
+// src/lib/env.js
+// Single source of truth for environment values (no import.meta).
+
 const clean = (s) => (s || '').trim().replace(/\/+$/, '');
 
-const RAW_API = clean(process.env.REACT_APP_API_BASE);
-const RAW_WS  = clean(process.env.REACT_APP_WS_BASE);
+// Allow either REACT_APP_API_BASE or REACT_APP_API_URL
+const RAW_API =
+  clean(process.env.REACT_APP_API_BASE) ||
+  clean(process.env.REACT_APP_API_URL);
 
-// API base like https://pub-game-backend.onrender.com
-export const API_BASE = RAW_API || '';
+// Allow either REACT_APP_WS_BASE or REACT_APP_WS_URL
+const RAW_WS =
+  clean(process.env.REACT_APP_WS_BASE) ||
+  clean(process.env.REACT_APP_WS_URL);
 
-// WS base like wss://pub-game-backend.onrender.com
+// Fallback: your actual backend on Render
+const FALLBACK_API = 'https://pub-game-backend.onrender.com';
+
+// Final values used by the app
+export const API_BASE = RAW_API || FALLBACK_API;
 export const WS_BASE  = RAW_WS || (API_BASE ? API_BASE.replace(/^http/i, 'ws') : '');
+
+if (!RAW_API) {
+  // eslint-disable-next-line no-console
+  console.warn('[env] REACT_APP_API_BASE not set; using fallback:', API_BASE);
+}
+
 export default { API_BASE, WS_BASE };

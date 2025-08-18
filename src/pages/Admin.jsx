@@ -1,78 +1,113 @@
-// src/pages/AdminPage.jsx
-import React, { useEffect, useState } from 'react';
-import { getAdminConfig, saveJackpot } from '../lib/api';
+// src/pages/Admin.jsx
+import React, { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { getAdminConfig, saveJackpot } from "../lib/api";
+import "../ui/pubgame-theme.css";
 
-export default function AdminPage() {
-  const [config, setConfig] = useState(null);
+export default function Admin() {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [jackpots, setJackpots] = useState({});
+  const [err, setErr] = useState("");
+  const [cfg, setCfg] = useState(null);
 
-  useEffect(() => {
-    async function loadConfig() {
-      try {
-        const data = await getAdminConfig();
-        setConfig(data);
-        setJackpots(data.jackpots || {});
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load admin config');
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setErr("");
+    setLoading(true);
+    try {
+      const data = await getAdminConfig();
+      setCfg(data || {});
+    } catch (e) {
+      setErr(String(e.message || e));
+      setCfg(null);
+    } finally {
+      setLoading(false);
     }
-    loadConfig();
   }, []);
 
-  async function handleSave(gameKey) {
-    try {
-      await saveJackpot(gameKey, jackpots[gameKey]);
-      alert('Jackpot saved!');
-    } catch (err) {
-      alert('Failed to save jackpot');
-    }
-  }
+  useEffect(() => { load(); }, [load]);
 
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p style={{ color: 'red' }}>{error}</p>;
+  const [ctsJackpot, setCtsJackpot]   = useState("0");
+  const [wibJackpot, setWibJackpot]   = useState("0");
+  useEffect(() => {
+    if (cfg?.jackpots) {
+      if (cfg.jackpots.crack_the_safe != null)
+        setCtsJackpot((cfg.jackpots.crack_the_safe / 100).toFixed(2));
+      if (cfg.jackpots.whats_in_the_box != null)
+        setWibJackpot((cfg.jackpots.whats_in_the_box / 100).toFixed(2));
+    }
+  }, [cfg]);
+
+  const saveJackpotClick = async (gameKey, pounds) => {
+    try {
+      await saveJackpot(gameKey, pounds);
+      await load();
+      alert("Saved");
+    } catch (e) {
+      alert("Save failed: " + String(e.message || e));
+    }
+  };
 
   return (
-    <div>
-      <h1>Admin</h1>
-
-      {['safe', 'box'].map(gameKey => (
-        <div key={gameKey} style={{ marginBottom: '20px' }}>
-          <h2>
-            {gameKey === 'safe' ? 'Crack the Safe' : "What's in the Box"}
-          </h2>
-
-          {config.products?.[gameKey]?.length ? (
-            <select>
-              {config.products[gameKey].map(prod => (
-                <option key={prod.id} value={prod.id}>
-                  {prod.name} - £{(prod.price_cents / 100).toFixed(2)}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <p>No products configured yet for this game.</p>
-          )}
-
-          <div>
-            <label>
-              Jackpot (£):
-              <input
-                type="number"
-                value={jackpots[gameKey] || 0}
-                onChange={e =>
-                  setJackpots({ ...jackpots, [gameKey]: Number(e.target.value) })
-                }
-              />
-            </label>
-            <button onClick={() => handleSave(gameKey)}>Save Jackpot</button>
-          </div>
+    <div className="admin-wrap">
+      <div className="admin-card">
+        <div className="actions" style={{justifyContent:"space-between", flexWrap:"wrap"}}>
+          <Link to="/dashboard" className="btn ghost">Back to Dashboard</Link>
+          <Link to="/game/new" className="btn ghost">New Game</Link>
+          <Link to="/billing" className="btn ghost">Billing</Link>
+          <Link to="/login" className="btn solid">Logout</Link>
         </div>
-      ))}
+
+        <h1 className="admin-title">Admin</h1>
+        {err && <div className="alert error">{err}</div>}
+        {loading && <p>Loading…</p>}
+
+        {!loading && (
+          <>
+            {/* Crack the Safe */}
+            <section className="admin-card" style={{marginTop:12}}>
+              <h2 className="section-title">Crack the Safe</h2>
+
+              <div className="field">
+                <span>Jackpot (£)</span>
+                <input
+                  inputMode="decimal"
+                  value={ctsJackpot}
+                  onChange={(e) => setCtsJackpot(e.target.value)}
+                />
+              </div>
+              <div className="actions">
+                <button
+                  className="btn solid"
+                  onClick={() => saveJackpotClick("crack_the_safe", ctsJackpot)}
+                >
+                  Save jackpot
+                </button>
+              </div>
+            </section>
+
+            {/* What's in the Box */}
+            <section className="admin-card">
+              <h2 className="section-title">What’s in the Box</h2>
+
+              <div className="field">
+                <span>Jackpot (£)</span>
+                <input
+                  inputMode="decimal"
+                  value={wibJackpot}
+                  onChange={(e) => setWibJackpot(e.target.value)}
+                />
+              </div>
+              <div className="actions">
+                <button
+                  className="btn solid"
+                  onClick={() => saveJackpotClick("whats_in_the_box", wibJackpot)}
+                >
+                  Save jackpot
+                </button>
+              </div>
+            </section>
+          </>
+        )}
+      </div>
     </div>
   );
 }

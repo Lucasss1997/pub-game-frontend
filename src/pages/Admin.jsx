@@ -1,113 +1,191 @@
 // src/pages/Admin.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { getAdminConfig, saveJackpot } from "../lib/api";
+import {
+  getAdminConfig,
+  saveJackpot,
+  getProduct,
+  saveProduct,
+} from "../lib/api";
+
 import "../ui/pubgame-theme.css";
 
-export default function Admin() {
+const GAMES = [
+  { key: "crack_the_safe", title: "Crack the Safe" },
+  { key: "whats_in_the_box", title: "What’s in the Box" },
+];
+
+function PoundsInput({ value, onChange, placeholder = "0.00" }) {
+  return (
+    <input
+      inputMode="decimal"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+    />
+  );
+}
+
+function GameSection({ gameKey, title }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [cfg, setCfg] = useState(null);
+
+  // product state
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("1.00");
+  const [active, setActive] = useState(true);
+
+  // jackpot state
+  const [jackpot, setJackpot] = useState("0.00");
 
   const load = useCallback(async () => {
-    setErr("");
     setLoading(true);
+    setErr("");
     try {
-      const data = await getAdminConfig();
-      setCfg(data || {});
+      // Load product (if it exists yet)
+      try {
+        const p = await getProduct(gameKey);
+        if (p) {
+          setName(p.name || "");
+          setPrice(
+            p.price_pounds != null ? String(p.price_pounds) : "1.00"
+          );
+          setActive(!!p.active);
+        }
+      } catch {
+        // no product configured yet — that's fine
+      }
+
+      // Load jackpots from admin config
+      try {
+        const cfg = await getAdminConfig();
+        const cents = cfg?.jackpots?.[gameKey];
+        if (typeof cents === "number") {
+          setJackpot((cents / 100).toFixed(2));
+        }
+      } catch {}
     } catch (e) {
       setErr(String(e.message || e));
-      setCfg(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [gameKey]);
 
-  useEffect(() => { load(); }, [load]);
-
-  const [ctsJackpot, setCtsJackpot]   = useState("0");
-  const [wibJackpot, setWibJackpot]   = useState("0");
   useEffect(() => {
-    if (cfg?.jackpots) {
-      if (cfg.jackpots.crack_the_safe != null)
-        setCtsJackpot((cfg.jackpots.crack_the_safe / 100).toFixed(2));
-      if (cfg.jackpots.whats_in_the_box != null)
-        setWibJackpot((cfg.jackpots.whats_in_the_box / 100).toFixed(2));
-    }
-  }, [cfg]);
+    load();
+  }, [load]);
 
-  const saveJackpotClick = async (gameKey, pounds) => {
+  const onSaveProduct = async () => {
     try {
-      await saveJackpot(gameKey, pounds);
+      await saveProduct(gameKey, {
+        name: name || "Standard Entry",
+        price_pounds: price || "1.00",
+        active,
+      });
+      alert("Product saved");
+    } catch (e) {
+      alert("Save failed: " + String(e.message || e));
+    }
+  };
+
+  const onSaveJackpot = async () => {
+    try {
+      await saveJackpot(gameKey, jackpot || "0");
+      alert("Jackpot saved");
       await load();
-      alert("Saved");
     } catch (e) {
       alert("Save failed: " + String(e.message || e));
     }
   };
 
   return (
+    <section className="admin-card">
+      <h2 className="section-title">{title}</h2>
+      {err && <div className="alert error">{err}</div>}
+      {loading && <p>Loading…</p>}
+
+      {/* Product editor */}
+      <div className="field">
+        <span>Product name</span>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Standard Entry"
+        />
+      </div>
+
+      <div className="field">
+        <span>Ticket price (£)</span>
+        <PoundsInput value={price} onChange={setPrice} />
+      </div>
+
+      <div className="field">
+        <span>Active</span>
+        <select
+          value={active ? "yes" : "no"}
+          onChange={(e) => setActive(e.target.value === "yes")}
+        >
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+
+      <div className="actions">
+        <button className="btn solid" onClick={onSaveProduct}>
+          Save product
+        </button>
+      </div>
+
+      {/* Jackpot under product */}
+      <hr
+        style={{
+          border: 0,
+          borderTop: "2px dashed #7a2dda55",
+          margin: "16px 0",
+        }}
+      />
+
+      <div className="field">
+        <span>Jackpot (£):</span>
+        <PoundsInput value={jackpot} onChange={setJackpot} />
+      </div>
+
+      <div className="actions" style={{ marginBottom: 6 }}>
+        <button className="btn solid" onClick={onSaveJackpot}>
+          Save jackpot
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export default function Admin() {
+  return (
     <div className="admin-wrap">
       <div className="admin-card">
-        <div className="actions" style={{justifyContent:"space-between", flexWrap:"wrap"}}>
-          <Link to="/dashboard" className="btn ghost">Back to Dashboard</Link>
-          <Link to="/game/new" className="btn ghost">New Game</Link>
-          <Link to="/billing" className="btn ghost">Billing</Link>
-          <Link to="/login" className="btn solid">Logout</Link>
+        <div
+          className="actions"
+          style={{ justifyContent: "space-between", flexWrap: "wrap" }}
+        >
+          <Link to="/dashboard" className="btn ghost">
+            Back to Dashboard
+          </Link>
+          <Link to="/game/new" className="btn ghost">
+            New Game
+          </Link>
+          <Link to="/billing" className="btn ghost">
+            Billing
+          </Link>
+          <Link to="/login" className="btn solid">
+            Logout
+          </Link>
         </div>
-
         <h1 className="admin-title">Admin</h1>
-        {err && <div className="alert error">{err}</div>}
-        {loading && <p>Loading…</p>}
-
-        {!loading && (
-          <>
-            {/* Crack the Safe */}
-            <section className="admin-card" style={{marginTop:12}}>
-              <h2 className="section-title">Crack the Safe</h2>
-
-              <div className="field">
-                <span>Jackpot (£)</span>
-                <input
-                  inputMode="decimal"
-                  value={ctsJackpot}
-                  onChange={(e) => setCtsJackpot(e.target.value)}
-                />
-              </div>
-              <div className="actions">
-                <button
-                  className="btn solid"
-                  onClick={() => saveJackpotClick("crack_the_safe", ctsJackpot)}
-                >
-                  Save jackpot
-                </button>
-              </div>
-            </section>
-
-            {/* What's in the Box */}
-            <section className="admin-card">
-              <h2 className="section-title">What’s in the Box</h2>
-
-              <div className="field">
-                <span>Jackpot (£)</span>
-                <input
-                  inputMode="decimal"
-                  value={wibJackpot}
-                  onChange={(e) => setWibJackpot(e.target.value)}
-                />
-              </div>
-              <div className="actions">
-                <button
-                  className="btn solid"
-                  onClick={() => saveJackpotClick("whats_in_the_box", wibJackpot)}
-                >
-                  Save jackpot
-                </button>
-              </div>
-            </section>
-          </>
-        )}
       </div>
+
+      {GAMES.map((g) => (
+        <GameSection key={g.key} gameKey={g.key} title={g.title} />
+      ))}
     </div>
   );
 }

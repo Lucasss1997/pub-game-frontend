@@ -1,191 +1,171 @@
 // src/pages/Admin.jsx
-import React, { useEffect, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
-import {
-  getAdminConfig,
-  saveJackpot,
-  getProduct,
-  saveProduct,
-} from "../lib/api";
-
-import "../ui/pubgame-theme.css";
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import '../ui/pubgame-theme.css';
+import { api } from '../lib/api'; // works because api.js now exports BOTH named and default
 
 const GAMES = [
-  { key: "crack_the_safe", title: "Crack the Safe" },
-  { key: "whats_in_the_box", title: "What’s in the Box" },
+  { key: 'safe', title: 'Crack the Safe' },
+  { key: 'box',  title: "What's in the Box" },
 ];
 
-function PoundsInput({ value, onChange, placeholder = "0.00" }) {
+function ProductEditor({ gameKey, product, onChange, onSave, saving }) {
   return (
-    <input
-      inputMode="decimal"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-    />
-  );
-}
-
-function GameSection({ gameKey, title }) {
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-
-  // product state
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("1.00");
-  const [active, setActive] = useState(true);
-
-  // jackpot state
-  const [jackpot, setJackpot] = useState("0.00");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr("");
-    try {
-      // Load product (if it exists yet)
-      try {
-        const p = await getProduct(gameKey);
-        if (p) {
-          setName(p.name || "");
-          setPrice(
-            p.price_pounds != null ? String(p.price_pounds) : "1.00"
-          );
-          setActive(!!p.active);
-        }
-      } catch {
-        // no product configured yet — that's fine
-      }
-
-      // Load jackpots from admin config
-      try {
-        const cfg = await getAdminConfig();
-        const cents = cfg?.jackpots?.[gameKey];
-        if (typeof cents === "number") {
-          setJackpot((cents / 100).toFixed(2));
-        }
-      } catch {}
-    } catch (e) {
-      setErr(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
-  }, [gameKey]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const onSaveProduct = async () => {
-    try {
-      await saveProduct(gameKey, {
-        name: name || "Standard Entry",
-        price_pounds: price || "1.00",
-        active,
-      });
-      alert("Product saved");
-    } catch (e) {
-      alert("Save failed: " + String(e.message || e));
-    }
-  };
-
-  const onSaveJackpot = async () => {
-    try {
-      await saveJackpot(gameKey, jackpot || "0");
-      alert("Jackpot saved");
-      await load();
-    } catch (e) {
-      alert("Save failed: " + String(e.message || e));
-    }
-  };
-
-  return (
-    <section className="admin-card">
-      <h2 className="section-title">{title}</h2>
-      {err && <div className="alert error">{err}</div>}
-      {loading && <p>Loading…</p>}
-
-      {/* Product editor */}
+    <div className="admin-card" style={{ marginTop: 8 }}>
       <div className="field">
         <span>Product name</span>
         <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Standard Entry"
+          value={product.name}
+          onChange={(e) => onChange({ ...product, name: e.target.value })}
+          placeholder="£1 Standard Entry"
         />
       </div>
 
       <div className="field">
         <span>Ticket price (£)</span>
-        <PoundsInput value={price} onChange={setPrice} />
+        <input
+          type="number"
+          step="0.01"
+          value={product.price_pounds}
+          onChange={(e) => onChange({ ...product, price_pounds: e.target.value })}
+        />
       </div>
 
       <div className="field">
         <span>Active</span>
         <select
-          value={active ? "yes" : "no"}
-          onChange={(e) => setActive(e.target.value === "yes")}
+          value={product.active ? 'Yes' : 'No'}
+          onChange={(e) => onChange({ ...product, active: e.target.value === 'Yes' })}
         >
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
+          <option>Yes</option>
+          <option>No</option>
         </select>
       </div>
 
-      <div className="actions">
-        <button className="btn solid" onClick={onSaveProduct}>
-          Save product
-        </button>
-      </div>
-
-      {/* Jackpot under product */}
-      <hr
-        style={{
-          border: 0,
-          borderTop: "2px dashed #7a2dda55",
-          margin: "16px 0",
-        }}
-      />
-
-      <div className="field">
-        <span>Jackpot (£):</span>
-        <PoundsInput value={jackpot} onChange={setJackpot} />
-      </div>
-
-      <div className="actions" style={{ marginBottom: 6 }}>
-        <button className="btn solid" onClick={onSaveJackpot}>
-          Save jackpot
-        </button>
-      </div>
-    </section>
+      <button className="btn solid" disabled={saving} onClick={() => onSave(gameKey, product)}>
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
   );
 }
 
 export default function Admin() {
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Per-game state
+  const [jackpots, setJackpots] = useState({ safe: '0.00', box: '0.00' });
+  const [products, setProducts]   = useState({
+    safe: { name: '', price_pounds: '1.00', active: true },
+    box:  { name: '', price_pounds: '1.00', active: true },
+  });
+
+  async function load() {
+    setError('');
+    try {
+      const cfg = await api.getAdminConfig(); // { jackpots: {safe,box}, products: {safe,box}}
+      if (cfg?.jackpots) {
+        setJackpots({
+          safe: (Number(cfg.jackpots.safe || 0) / 100).toFixed(2),
+          box:  (Number(cfg.jackpots.box  || 0) / 100).toFixed(2),
+        });
+      }
+      if (cfg?.products) {
+        const next = { ...products };
+        for (const key of ['safe', 'box']) {
+          const p = cfg.products[key];
+          if (p) {
+            next[key] = {
+              name: p.name || '',
+              price_pounds: (Number(p.price_cents || 0) / 100).toFixed(2),
+              active: !!p.active,
+            };
+          }
+        }
+        setProducts(next);
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to load admin config');
+    }
+  }
+
+  useEffect(() => { load(); /* on mount */ }, []);
+
+  async function handleSaveProduct(gameKey, product) {
+    setError('');
+    setSaving(true);
+    try {
+      await api.saveProduct(gameKey, product);
+    } catch (e) {
+      setError(e.message || 'Failed to save product');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveJackpot(gameKey) {
+    setError('');
+    setSaving(true);
+    try {
+      await api.saveJackpot(gameKey, jackpots[gameKey]);
+    } catch (e) {
+      setError(e.message || 'Failed to save jackpot');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="admin-wrap">
       <div className="admin-card">
-        <div
-          className="actions"
-          style={{ justifyContent: "space-between", flexWrap: "wrap" }}
-        >
-          <Link to="/dashboard" className="btn ghost">
-            Back to Dashboard
-          </Link>
-          <Link to="/game/new" className="btn ghost">
-            New Game
-          </Link>
-          <Link to="/billing" className="btn ghost">
-            Billing
-          </Link>
-          <Link to="/login" className="btn solid">
-            Logout
-          </Link>
+        <div className="actions" style={{ flexWrap: 'wrap' }}>
+          <Link to="/dashboard" className="btn ghost">Back to Dashboard</Link>
+          <Link to="/dashboard?new" className="btn ghost">New Game</Link>
+          <Link to="/billing" className="btn ghost">Billing</Link>
+          <Link to="/login" className="btn solid" onClick={() => localStorage.removeItem('token')}>Logout</Link>
         </div>
+
         <h1 className="admin-title">Admin</h1>
+        {!!error && <div className="alert error">{error}</div>}
       </div>
 
-      {GAMES.map((g) => (
-        <GameSection key={g.key} gameKey={g.key} title={g.title} />
-      ))}
+      {GAMES.map(({ key, title }) => {
+        const product = products[key];
+        return (
+          <div key={key} className="admin-card">
+            <h2 className="section-title">{title}</h2>
+
+            <ProductEditor
+              gameKey={key}
+              product={product}
+              onChange={(p) => setProducts((prev) => ({ ...prev, [key]: p }))}
+              onSave={handleSaveProduct}
+              saving={saving}
+            />
+
+            <div style={{ height: 10 }} />
+
+            <div className="field">
+              <span>Jackpot (£):</span>
+              <input
+                type="number"
+                step="0.01"
+                value={jackpots[key]}
+                onChange={(e) => setJackpots((prev) => ({ ...prev, [key]: e.target.value }))}
+              />
+            </div>
+
+            <button
+              className="btn solid"
+              style={{ marginTop: 6 }}
+              disabled={saving}
+              onClick={() => handleSaveJackpot(key)}
+            >
+              {saving ? 'Saving…' : 'Save Jackpot'}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

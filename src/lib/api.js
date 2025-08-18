@@ -1,80 +1,69 @@
 // src/lib/api.js
-import { API_BASE } from './env';
-import { getToken, setToken as _setToken, clearToken as _clearToken } from './auth';
+import { API_BASE } from "./env";
 
-// Join base + path safely
-function join(base, path) {
-  if (!path) return base;
-  if (/^https?:/i.test(path)) return path;            // absolute URL
-  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+// keep token in memory + localStorage
+let _token = localStorage.getItem("token") || "";
+
+export function setToken(t) {
+  _token = t || "";
+  if (_token) localStorage.setItem("token", _token);
+  else localStorage.removeItem("token");
+}
+export function clearToken() { setToken(""); }
+export function getToken() { return _token; }
+
+// build URL against API_BASE and optionally append ?t=token
+function buildUrl(path) {
+  const full = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  try {
+    const u = new URL(full);
+    if (_token) u.searchParams.set("t", _token); // helpful for some backends
+    return u.toString();
+  } catch {
+    // if API_BASE missing, this will show up as an obvious error
+    return full;
+  }
 }
 
-// Core request wrapper (JSON by default)
-export async function request(path, opts = {}) {
-  const url = join(API_BASE || '', path);
+// central fetch wrapper
+async function request(path, { method = "GET", body, headers = {} } = {}) {
+  const url = buildUrl(path);
+  const h = { "Content-Type": "application/json", ...headers };
 
-  const headers = new Headers(opts.headers || {});
-  if (!headers.has('Content-Type') && opts.body && typeof opts.body === 'object') {
-    headers.set('Content-Type', 'application/json');
+  // attach token in multiple ways to satisfy any backend check
+  if (_token) {
+    h.Authorization = `Bearer ${_token}`;
+    h["x-auth-token"] = _token;
   }
 
-  const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-
-  const response = await fetch(url, {
-    method: opts.method || 'GET',
-    headers,
-    body: opts.body && typeof opts.body === 'object' && headers.get('Content-Type')?.includes('application/json')
-      ? JSON.stringify(opts.body)
-      : opts.body || undefined,
-    credentials: 'include',
+  const res = await fetch(url, {
+    method,
+    headers: h,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "include", // send cookies if server uses sessions
   });
 
-  const ctype = response.headers.get('content-type') || '';
-  const data  = ctype.includes('application/json') ? await response.json() : await response.text();
-
-  if (!response.ok) {
-    const err = new Error(data?.error || data?.message || `HTTP ${response.status}`);
-    err.status = response.status;
-    err.data   = data;
-    throw err;
+  if (!res.ok) {
+    let detail = "";
+    try { detail = " · " + JSON.stringify(await res.json()); } catch {}
+    throw new Error(`HTTP ${res.status}${detail}`);
   }
-  return data;
+  if (res.status === 204) return null;
+  return res.json();
 }
 
-// ---- convenient verbs
-export const get = (path, opts = {}) => request(path, { ...opts, method: 'GET' });
-export const post = (path, body, opts = {}) => request(path, { ...opts, method: 'POST', body });
-export const put  = (path, body, opts = {}) => request(path, { ...opts, method: 'PUT',  body });
-export const del  = (path, opts = {}) => request(path, { ...opts, method: 'DELETE' });
+// convenient verbs
+export const get  = (p, opts = {})            => request(p, { ...opts, method: "GET" });
+export const post = (p, body, opts = {})      => request(p, { ...opts, method: "POST", body });
+export const put  = (p, body, opts = {})      => request(p, { ...opts, method: "PUT",  body });
+export const del  = (p, opts = {})            => request(p, { ...opts, method: "DELETE" });
 
-// ---- auth helpers (re-exported so pages can import from ../lib/api)
-export const setToken   = (t) => _setToken(t);
-export const clearToken = () => _clearToken();
+// specific helpers
+export const getAdminConfig = () => get("/api/admin/config");
+export const saveJackpot     = (gameKey, pounds) =>
+  post(`/api/admin/jackpot/${gameKey}`, { pounds });
 
-// ---- admin helpers expected by pages
-export async function getAdminConfig() {
-  // Backend should return: { products:[...], jackpots:{crack_safe: cents, whats_in_box: cents}, ... }
-  return get('/api/admin/config');
-}
-
-export async function saveJackpot(gameKey, pounds) {
-  const cents = Math.round(parseFloat(pounds || '0') * 100);
-  return post('/api/admin/jackpot', { game_key: gameKey, jackpot_cents: cents });
-}
-
-export async function saveProduct(gameKey, product) {
-  // product: { id?, name, price_pounds, active }
-  const body = {
-    game_key: gameKey,
-    name: product.name,
-    price_cents: Math.round(parseFloat(product.price_pounds || '0') * 100),
-    active: !!product.active,
-    id: product.id ?? undefined,
-  };
-  return post('/api/admin/product', body);
-}
-
-// Provide a default export for legacy imports: `import api from '../lib/api'`
-const api = { request, get, post, put, del, setToken, clearToken, getAdminConfig, saveJackpot, saveProduct };
+// default + named exports (so both import styles work)
+const api = { get, post, put, del, getAdminConfig, saveJackpot, setToken, clearToken, getToken };
 export default api;
+export { api };
